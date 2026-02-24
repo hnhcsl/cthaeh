@@ -66,7 +66,19 @@ def parse_pml(filepath):
 
     entries = []
     with open(filepath, "rb") as f:
-        reader = ProcmonLogsReader(f)
+        try:
+            reader = ProcmonLogsReader(f)
+        except Exception as e:
+            # Handle corrupt/unclean PML files (common with boot logs)
+            print(f"WARNING: PML file may be corrupt: {e}", file=sys.stderr)
+            print("Attempting to read with should_get_details=False...", file=sys.stderr)
+            f.seek(0)
+            try:
+                reader = ProcmonLogsReader(f, should_get_details=False)
+            except Exception as e2:
+                print(f"ERROR: Cannot parse PML file: {e2}", file=sys.stderr)
+                print("Export as CSV from Procmon and use --csv instead.", file=sys.stderr)
+                sys.exit(1)
         for event in reader:
             op = event.operation or ""
             result = event.result or ""
