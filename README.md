@@ -138,34 +138,8 @@ The top scorer is auto-explained after every scan.
 | `prefilter.py` | Fast PE import pre-filter |
 | `extract_driverstore.py` | Extracts third-party .sys from Windows DriverStore |
 | `investigated.json` | Drivers already analyzed (skipped on scan) |
-| `boot_analyzer.py` | Procmon boot log parser (finds drivers hitting missing registry keys during early boot) |
 | `policies/` | WDAC block policy JSONs and HolyGrail LOLDrivers data |
 | `test_regression.py` | Regression tests against known ground-truth samples |
-
-## Boot-Phase Analysis
-
-Drivers that load during early boot (before the SOFTWARE registry hive is mounted) are interesting targets. They often have weaker validation and run with maximum privilege.
-
-### Capture a boot log
-
-1. Open Procmon as admin → Options → Enable Boot Logging → OK
-2. Reboot
-3. Open Procmon → save the boot log as CSV
-
-### Analyze boot blind spots
-
-```bash
-# Find drivers blindly reaching for HKLM\SOFTWARE during Phase 0/1
-python boot_analyzer.py --csv bootlog.csv --output blind_spots.json
-
-# Feed into prefilter for bonus scoring
-python prefilter.py --boot-log blind_spots.json C:\drivers\extracted
-```
-
-The prefilter assigns bonus points to boot-phase drivers:
-- `BOOT_START` (start type 0): +15 points
-- `SYSTEM_START` (start type 1): +10 points
-- Boot blind spot (from Procmon log): +5 points
 
 ## CLI Reference
 
@@ -202,7 +176,7 @@ DriverStore --> extract --> Cthaeh triage --> ranked list --> manual audit
 
 - Python 3.8+
 - Ghidra 10.x+ (headless mode)
-- `pip install -r requirements.txt` (pefile, procmon-parser)
+- `pip install -r requirements.txt` (pefile)
 - Windows (for DriverStore extraction; analysis works on any OS)
 
 ## Acknowledgments
