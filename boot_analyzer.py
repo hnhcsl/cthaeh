@@ -112,12 +112,43 @@ def get_driver_start_type_from_name(driver_name):
         return None, "UNKNOWN"
 
 
+# Userland processes to skip (not kernel drivers)
+SKIP_PROCESSES = {
+    "svchost.exe", "explorer.exe", "chrome.exe", "discord.exe", "onedrive.exe",
+    "searchhost.exe", "searchprotocolhost.exe", "runtimebroker.exe", "sihost.exe",
+    "taskhostw.exe", "conhost.exe", "csrss.exe", "tiworker.exe", "oawrapper.exe",
+    "startmenuexperiencehost.exe", "nvcontainer.exe", "officeclicktorun.exe",
+    "filecoauth.exe", "backgroundtaskhost.exe", "dllhost.exe", "smartscreen.exe",
+    "msedge.exe", "firefox.exe", "code.exe", "powershell.exe", "cmd.exe",
+    "wmiprvse.exe", "msiexec.exe", "setup.exe", "installer.exe",
+}
+
+
+def is_driver_process(name):
+    """Filter to likely kernel driver processes."""
+    lower = name.lower()
+    # Always include .sys
+    if lower.endswith(".sys"):
+        return True
+    # Skip known userland
+    if lower in SKIP_PROCESSES:
+        return False
+    # System (PID 4) spawned processes are interesting
+    # But .exe files are generally userland
+    if lower.endswith(".exe"):
+        return False
+    # Include anything else (no extension = could be kernel)
+    return True
+
+
 def analyze(entries):
     """Group entries by process and build ranked report."""
     by_process = defaultdict(lambda: {"paths": set(), "times": [], "count": 0})
 
     for e in entries:
         proc = e["process"]
+        if not is_driver_process(proc):
+            continue
         by_process[proc]["paths"].add(e["path"])
         by_process[proc]["times"].append(e["time"])
         by_process[proc]["count"] += 1
