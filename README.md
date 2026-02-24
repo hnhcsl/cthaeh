@@ -202,7 +202,7 @@ DriverStore --> extract --> Cthaeh triage --> ranked list --> manual audit
 
 - Python 3.8+
 - Ghidra 10.x+ (headless mode)
-- `pefile`: `pip install pefile`
+- `pip install -r requirements.txt` (pefile, procmon-parser)
 - Windows (for DriverStore extraction; analysis works on any OS)
 
 ## Acknowledgments
