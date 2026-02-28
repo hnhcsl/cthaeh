@@ -62,7 +62,8 @@ def run_ghidra_analysis(args_tuple):
         return None, f"Ghidra headless not found at {headless}"
     
     driver_name = Path(driver_path).stem
-    
+    script_dir = os.path.dirname(script_path)
+
     cmd = [
         headless,
         project_dir,
@@ -70,8 +71,14 @@ def run_ghidra_analysis(args_tuple):
         "-import", driver_path,
         "-postScript", os.path.basename(script_path),
         "-deleteProject",
-        "-scriptPath", os.path.dirname(script_path),
+        "-scriptPath", script_dir,
     ]
+
+    # Apply Talos DTA pre-script if .gdt file exists
+    dta_script = os.path.join(script_dir, "apply_dta.py")
+    dta_gdt = os.path.join(script_dir, "data", "windows_driver_types.gdt")
+    if os.path.exists(dta_script) and os.path.exists(dta_gdt):
+        cmd.extend(["-preScript", "apply_dta.py"])
     
     try:
         result = subprocess.run(
