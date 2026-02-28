@@ -285,6 +285,18 @@ DISK_ACCESS_STRINGS = {
     "RawDisk",
 }
 
+# Good security practice imports (negative scoring - reduce risk_hint)
+GOOD_PRACTICE_IMPORTS = {
+    "ProbeForRead",           # Proper input validation
+    "ProbeForWrite",          # Proper input validation
+    "IoCreateDeviceSecure",   # Secure device creation (vs plain IoCreateDevice)
+    "SeAccessCheck",          # Authorization enforcement
+    "SeSinglePrivilegeCheck", # Authorization enforcement
+    "WdfDriverCreate",        # KMDF safety framework
+    "WdfDeviceCreate",        # KMDF safety framework
+    "ObReferenceObjectByHandleWithTag",  # Proper handle validation
+}
+
 # Skip drivers larger than this (huge drivers = slow Ghidra analysis)
 MAX_SIZE_BYTES = 5 * 1024 * 1024  # 5MB default
 
@@ -681,6 +693,39 @@ def check_driver(driver_path, max_size=MAX_SIZE_BYTES, lol_hashes=None, lol_name
     if boot_bonus:
         high_risk_count += boot_bonus
         flags.append(f"BOOT_PHASE:{boot_phase}")
+
+    # --- Negative scoring: good security practices reduce risk ---
+    if "ProbeForRead" in imports:
+        high_risk_count += _pf_score("probe_for_read_bonus", -2)
+        flags.append("HAS_PROBES")
+    if "ProbeForWrite" in imports:
+        high_risk_count += _pf_score("probe_for_write_bonus", -2)
+        if "HAS_PROBES" not in flags:
+            flags.append("HAS_PROBES")
+    if "IoCreateDeviceSecure" in imports:
+        high_risk_count += _pf_score("secure_device_creation_bonus", -3)
+        flags.append("SECURE_DEVICE")
+    if "SeAccessCheck" in imports:
+        high_risk_count += _pf_score("se_access_check_bonus", -2)
+        flags.append("HAS_ACCESS_CHECK")
+    if "SeSinglePrivilegeCheck" in imports:
+        high_risk_count += _pf_score("se_privilege_check_bonus", -2)
+        if "HAS_ACCESS_CHECK" not in flags:
+            flags.append("HAS_ACCESS_CHECK")
+    if "WdfDriverCreate" in imports:
+        high_risk_count += _pf_score("wdf_driver_create_bonus", -2)
+        flags.append("KMDF_FRAMEWORK")
+    if "WdfDeviceCreate" in imports:
+        high_risk_count += _pf_score("wdf_device_create_bonus", -2)
+        if "KMDF_FRAMEWORK" not in flags:
+            flags.append("KMDF_FRAMEWORK")
+    if "ObReferenceObjectByHandleWithTag" in imports:
+        high_risk_count += _pf_score("ob_ref_by_handle_tag_bonus", -1)
+        flags.append("VALIDATED_HANDLES")
+
+    # Floor at 0
+    if high_risk_count < 0:
+        high_risk_count = 0
 
     return True, "has attack surface", high_risk_count, flags, signer, driver_class
 
