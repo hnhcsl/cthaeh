@@ -63,7 +63,7 @@ def get_loaded_drivers():
     Uses PowerShell Get-WmiObject to get actual .sys paths of running drivers.
     Falls back to sc query if PowerShell fails.
     """
-    loaded = set()
+    loaded = {}
     
     # Method 1: PowerShell - most reliable, gets actual file paths
     try:
@@ -83,7 +83,13 @@ def get_loaded_drivers():
             # Paths come as \SystemRoot\system32\DRIVERS\foo.sys or C:\Windows\...
             name = line.split('\\')[-1].lower()
             if name.endswith('.sys'):
-                loaded.add(name)
+                # Handle paths like \??\C:\Program Files\... or \SystemRoot\...
+                clean_path = line
+                if clean_path.startswith('\\??\\'):
+                    clean_path = clean_path[4:]
+                elif clean_path.startswith('\\SystemRoot\\'):
+                    clean_path = clean_path.replace('\\SystemRoot\\', 'C:\\Windows\\', 1)
+                loaded[name] = clean_path
         
         if loaded:
             return loaded
@@ -101,7 +107,7 @@ def get_loaded_drivers():
             line = line.strip()
             if line.startswith("SERVICE_NAME:"):
                 svc = line.split(":", 1)[1].strip().lower()
-                loaded.add(svc + ".sys")
+                loaded[svc + ".sys"] = None # We don't know the path from sc query
     except Exception as e2:
         print(f"WARNING: sc query also failed: {e2}")
     
@@ -126,8 +132,7 @@ def extract_drivers(driverstore_path, output_dir, include_microsoft=False, loade
             sample = sorted(loaded_set)[:5]
             print(f"  Sample: {', '.join(sample)}")
         else:
-            print("WARNING: No loaded drivers detected, scanning all drivers.")
-            loaded_set = None
+            loaded_dict = None
     
     extracted = []
     skipped_ms = 0
@@ -135,6 +140,25 @@ def extract_drivers(driverstore_path, output_dir, include_microsoft=False, loade
     skipped_not_loaded = 0
     seen_names = set()
     
+    # Phase 1: Directly copy loaded drivers if we know their absolute path
+    if loaded_set is not None:
+        for name, path in list(loaded_set.items()):
+            if path and os.path.exists(path) and not is_likely_microsoft(path, include_microsoft):
+                dest = os.path.join(output_dir, name)
+                try:
+                    shutil.copy2(path, dest)
+                    extracted.append({
+                        "name": name,
+                        "source": path,
+                        "size": os.path.getsize(path),
+                    })
+                    seen_names.add(name)
+                    # Remove from set so we don't try to find it in DriverStore later
+                    del loaded_set[name]
+                except Exception as e:
+                    print(f"  SKIP direct copy ({e}): {name}")
+
+    # Phase 2: Scan DriverStore for remaining drivers
     for root, dirs, files in os.walk(driverstore_path):
         for f in files:
             if not f.lower().endswith(".sys"):
