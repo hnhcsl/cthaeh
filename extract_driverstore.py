@@ -94,7 +94,7 @@ def get_loaded_drivers():
     try:
         print("  Falling back to sc query...")
         result = subprocess.run(
-            ["sc", "query", "type=", "driver", "state=", "active"],
+            ["sc.exe", "query", "type=", "driver", "state=", "all"],
             capture_output=True, text=True, timeout=30
         )
         for line in result.stdout.splitlines():
