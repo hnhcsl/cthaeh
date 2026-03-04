@@ -1,4 +1,5 @@
 # driver_triage.py - Ghidra Headless Script for Cthaeh Driver Triage
+#@runtime Jython
 # Run via: analyzeHeadless.bat <proj> <name> -import <driver.sys> -postScript driver_triage.py
 #
 # Scores Windows kernel drivers on vulnerability indicators.
@@ -475,10 +476,11 @@ def get_import_dlls(program):
 def get_strings(program):
     """Get all defined strings in the binary."""
     strings = []
-    for data in DefinedDataIterator.definedStrings(program):
-        val = data.getDefaultValueRepresentation()
-        if val:
-            strings.append(val.strip('"').strip("'"))
+    for data in program.getListing().getDefinedData(True):
+        if data.hasStringValue():
+            val = data.getDefaultValueRepresentation()
+            if val:
+                strings.append(val.strip('"').strip("'"))
     return strings
 
 

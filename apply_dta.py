@@ -1,4 +1,5 @@
 # apply_dta.py - Ghidra Pre-Script: Load Talos Windows Driver Data Type Archive
+#@runtime Jython
 #
 # Loads the Cisco Talos .gdt archive into the current program's data type manager
 # so that Windows kernel types (IRP, IO_STACK_LOCATION, DEVICE_OBJECT, etc.) are
