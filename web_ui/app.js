@@ -313,7 +313,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const cacheKey = `${driver.driver.path}_${ioctlCode}`;
-                const cached = aiCache[cacheKey];
+                const cachedResult = aiCache[cacheKey];
+
+                let analyzeBtnHtml = '';
+                let containerStyle = 'display: none;';
+                let initialResultsStyle = 'display: none;';
+                let initialLoadingStyle = 'display: none;';
+
+                if (canAnalyze) {
+                    if (cachedResult) {
+                        containerStyle = 'display: block;';
+                        if (cachedResult.status === 'pending') {
+                            analyzeBtnHtml = `<button id="btn-analyze-${index}" class="ai-btn-small" disabled style="margin-left: 1rem; opacity: 0.7; cursor: not-allowed;" data-i18n="btn_analyzing">⏳ Analyzing...</button>`;
+                            initialLoadingStyle = 'display: flex;';
+
+                            // We need a script to trigger translating the dynamic IOCTL text right away
+                            setTimeout(() => {
+                                const statusTxt = document.getElementById(`ai-status-${index}`);
+                                if (statusTxt) {
+                                    const displayName = ioctlCode === 'Unknown' ? f.check : ioctlCode;
+                                    statusTxt.innerHTML = `<span data-i18n="waking_agents">${translations[currentLang]['waking_agents']}</span>${displayName}...`;
+                                }
+                            }, 0);
+
+                        } else if (!cachedResult.error && cachedResult.status !== 'error') {
+                            analyzeBtnHtml = `<button id="btn-analyze-${index}" class="ai-btn-small" title="Force Re-Analyze" style="margin-left: 1rem;" data-i18n="btn_analyzed">✅ Analyzed 🔄</button>`;
+                            initialResultsStyle = 'display: block;';
+                        } else {
+                            analyzeBtnHtml = `<button id="btn-analyze-${index}" class="ai-btn-small" title="Retry Analysis" style="margin-left: 1rem;" data-i18n="btn_failed">❌ Failed</button>`;
+                        }
+                    } else {
+                        analyzeBtnHtml = `<button id="btn-analyze-${index}" class="ai-btn-small" data-i18n="btn_analyze" style="margin-left: 1rem;">🧠 Analyze</button>`;
+                    }
+                }
 
                 return `
                 <div class="finding-item" style="position: relative;">
@@ -323,23 +355,23 @@ document.addEventListener('DOMContentLoaded', () => {
                             <strong>${f.check}</strong><br>
                             <span style="color: var(--text-secondary)">${f.detail}</span>
                         </div>
-                        ${canAnalyze ? `<button class="ai-btn-small" id="btn-analyze-${index}" data-ioctl="${ioctlCode}" title="Click to force retry">${cached ? translations[currentLang]['btn_analyzed'] + ' 🔄' : translations[currentLang]['btn_analyze']}</button>` : ''}
+                        ${analyzeBtnHtml}
                     </div>
                     
-                    <!-- Per-finding AI Results Container -->
-                    <div id="ai-container-${index}" class="ai-analysis-section" style="display: ${cached ? 'block' : 'none'}; margin-top: 1rem; padding: 1rem; border-color: rgba(168, 85, 247, 0.2);">
-                        <div id="ai-loading-${index}" class="ai-loading-container" style="display: none; padding: 1rem 0;">
+                    <!-- AI Analysis Container -->
+                    <div id="ai-container-${index}" class="ai-analysis-section" style="${containerStyle} margin-top: 1rem; padding: 1rem; border-color: rgba(168, 85, 247, 0.2);">
+                        <div id="ai-loading-${index}" class="ai-loading-container" style="${initialLoadingStyle} padding: 1rem 0;">
                             <div class="spinner"></div>
                             <p id="ai-status-${index}" style="margin: 0; font-size: 0.9rem;"><span data-i18n="waking_agents">Waking agents for </span>${ioctlCode}...</p>
                         </div>
-                        <div id="ai-results-${index}" style="display: ${cached ? 'block' : 'none'};">
+                        <div id="ai-results-${index}" style="${initialResultsStyle}">
                             <div class="ai-reverser-box" style="margin-bottom: 0.5rem;">
                                 <h3 style="font-size: 0.9rem; margin-top: 0;" data-i18n="reverser_title">🕵️ Reverser Analysis</h3>
-                                <pre id="reverser-output-${index}" style="font-size: 0.8rem; padding: 0.5rem;">${cached ? (cached.reverser_analysis || '') : ''}</pre>
+                                <pre id="reverser-output-${index}" style="font-size: 0.8rem; padding: 0.5rem;">${cachedResult ? (cachedResult.reverser_analysis || '') : ''}</pre>
                             </div>
                             <div class="ai-exploiter-box">
                                 <h3 style="font-size: 0.9rem; margin-top: 0;" data-i18n="exploiter_title">💣 Exploiter PoC</h3>
-                                <pre id="exploiter-output-${index}" class="code-block" style="font-size: 0.8rem; padding: 0.5rem;">${cached ? (cached.poc_code || '') : ''}</pre>
+                                <pre id="exploiter-output-${index}" class="code-block" style="font-size: 0.8rem; padding: 0.5rem;">${cachedResult ? (cachedResult.poc_code || '') : ''}</pre>
                             </div>
                         </div>
                     </div>
@@ -402,36 +434,48 @@ Description: ${cleanString(versionInfo.FileDescription)}
 
         // Function to run analysis for a specific finding
         const runAnalysis = async (finding, force = false) => {
-            const btn = document.getElementById(`btn-analyze-${finding.index}`);
-            const container = document.getElementById(`ai-container-${finding.index}`);
-            const loading = document.getElementById(`ai-loading-${finding.index}`);
-            const statusTxt = document.getElementById(`ai-status-${finding.index}`);
-            const results = document.getElementById(`ai-results-${finding.index}`);
-            const revOut = document.getElementById(`reverser-output-${finding.index}`);
-            const expOut = document.getElementById(`exploiter-output-${finding.index}`);
+            const cacheKey = `${driver.driver.path}_${finding.ioctlCode}`;
 
-            if (btn) {
-                btn.disabled = true;
-                btn.textContent = translations[currentLang]['btn_analyzing'];
+            // Re-query elements so closures don't hold stale DOM references
+            const getFreshElements = () => {
+                return {
+                    btn: document.getElementById(`btn-analyze-${finding.index}`),
+                    container: document.getElementById(`ai-container-${finding.index}`),
+                    loading: document.getElementById(`ai-loading-${finding.index}`),
+                    statusTxt: document.getElementById(`ai-status-${finding.index}`),
+                    results: document.getElementById(`ai-results-${finding.index}`),
+                    revOut: document.getElementById(`reverser-output-${finding.index}`),
+                    expOut: document.getElementById(`exploiter-output-${finding.index}`)
+                };
+            };
+
+            let els = getFreshElements();
+
+            if (els.btn) {
+                els.btn.disabled = true;
+                els.btn.textContent = translations[currentLang]['btn_analyzing'];
             }
 
-            container.style.display = 'block';
-            loading.style.display = 'flex';
-            results.style.display = 'none';
+            if (els.container) els.container.style.display = 'block';
+            if (els.loading) els.loading.style.display = 'flex';
+            if (els.results) els.results.style.display = 'none';
 
             // UI Polish: Use finding check name if IOCTL is unknown
             const displayName = finding.ioctlCode === 'Unknown' ? finding.check : finding.ioctlCode;
 
             // Translate the static part, keeping the dynamic IOCTL code
-            statusTxt.innerHTML = `<span data-i18n="waking_agents">${translations[currentLang]['waking_agents']}</span>${displayName}...`;
-
-            const cacheKey = `${driver.driver.path}_${finding.ioctlCode}`;
+            if (els.statusTxt) {
+                els.statusTxt.innerHTML = `<span data-i18n="waking_agents">${translations[currentLang]['waking_agents']}</span>${displayName}...`;
+            }
 
             try {
                 // Check Cache first, unless force retry
                 let result = force ? null : aiCache[cacheKey];
 
-                if (!result) {
+                if (!result || result.status === 'pending') {
+                    // Lock state strictly in cache immediately
+                    aiCache[cacheKey] = { status: 'pending' };
+
                     const response = await fetch('/api/analyze', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -445,45 +489,62 @@ Description: ${cleanString(versionInfo.FileDescription)}
                     result = await response.json();
                 }
 
-                loading.style.display = 'none';
-                results.style.display = 'block';
+                // VERY IMPORTANT: The modal might have been closed and re-opened while fetch was awaiting!
+                // We MUST re-query the DOM IDs to get the currently appended ones.
+                els = getFreshElements();
 
-                if (result.status === 'error') {
-                    revOut.innerHTML = `<span style="color:red">Error: ${result.error}</span>`;
-                    expOut.textContent = 'Aborted.';
-                    if (btn) {
-                        btn.textContent = translations[currentLang]['btn_failed'];
-                        btn.disabled = false; // Allow user to click again to retry
-                    }
-                    return;
+                // Store successful results
+                if (!result.error && result.status !== "error") {
+                    aiCache[cacheKey] = result;
+                } else if (result.error || result.status === "error") {
+                    // Update cache with error so UI knows it failed
+                    aiCache[cacheKey] = result;
                 }
 
-                // Cache the successful result
-                aiCache[cacheKey] = result;
+                if (!els.container) return; // User closed modal and hasn't re-opened it, UI is gone but cache is saved.
 
-                revOut.textContent = result.reverser_analysis;
+                els.loading.style.display = 'none';
+                els.results.style.display = 'block';
 
-                if (result.vuln_exists) {
-                    expOut.textContent = result.poc_code;
-                    if (btn) {
-                        btn.textContent = translations[currentLang]['btn_analyzed'] + ' 🔄';
-                        btn.disabled = false; // Re-enable for manual retry
+                if (result.error || result.status === "error") {
+                    els.results.innerHTML = `<div style="color: #ef4444; padding: 1rem; border: 1px solid #7f1d1d; border-radius: 4px;">Backend error during analysis of ${finding.ioctlCode}: ${result.error || 'Unknown error'}</div>`;
+                    if (els.btn) {
+                        els.btn.disabled = false;
+                        els.btn.textContent = translations[currentLang]['btn_failed'];
                     }
                 } else {
-                    expOut.innerHTML = `<span style="color:var(--text-secondary)">False Positive. No actionable PoC generated.</span>`;
-                    if (btn) {
-                        btn.textContent = translations[currentLang]['btn_analyzed'] + ' 🔄';
-                        btn.disabled = false; // Re-enable for manual retry
+                    els.revOut.innerHTML = marked.parse(result.reverser_analysis || "No analysis generated.");
+
+                    if (result.vuln_exists && result.poc_code) {
+                        els.expOut.parentElement.style.display = 'block';
+                        els.expOut.textContent = result.poc_code;
+                        hljs.highlightElement(els.expOut);
+                    } else {
+                        els.expOut.parentElement.style.display = 'none';
+                    }
+
+                    if (els.btn) {
+                        els.btn.disabled = false;
+                        els.btn.textContent = translations[currentLang]['btn_analyzed']; // Indicate done and clickable
                     }
                 }
 
             } catch (err) {
-                loading.style.display = 'none';
-                if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = '🔄 Retry';
+                console.error("AI Analysis failed:", err);
+
+                // Save error state so the user can retry later
+                aiCache[cacheKey] = { status: 'error', error: err.message };
+
+                els = getFreshElements();
+                if (els.results) {
+                    els.loading.style.display = 'none';
+                    els.results.style.display = 'block';
+                    els.results.innerHTML = `<div style="color: #ef4444; padding: 1rem; border: 1px solid #7f1d1d; border-radius: 4px;">Backend error during analysis of ${finding.ioctlCode}: ${err.message}</div>`;
                 }
-                alert("Backend error during analysis of " + finding.ioctlCode + ": " + err.message);
+                if (els.btn) {
+                    els.btn.disabled = false;
+                    els.btn.textContent = translations[currentLang]['btn_failed'];
+                }
             }
         };
 
@@ -503,7 +564,7 @@ Description: ${cleanString(versionInfo.FileDescription)}
                 analyzeAllBtn.disabled = true;
                 analyzeAllBtn.textContent = '⚡ Running Batch...';
 
-                // Run them sequentially to avoid killing local GPU/CPU or hitting rate limits too hard
+                // Run them sequentially to avoid hitting rate limits too hard
                 for (const finding of analyzableFindings) {
                     const btn = document.getElementById(`btn-analyze-${finding.index}`);
                     // Only run if it hasn't been run yet (checking disabled state)
