@@ -25,7 +25,12 @@ def find_dispatch_routine():
     """
     # For this blueprint, we'll try to find any function processing the IOCTL
     # by looking for the constant in instructions.
-    target_ioctl = int(args[1], 16) if args[1].startswith("0x") else int(args[1])
+    target_ioctl = None
+    if args[1] and args[1].lower() != "unknown":
+        try:
+            target_ioctl = int(args[1], 16) if args[1].startswith("0x") else int(args[1])
+        except ValueError:
+            pass # target_ioctl remains None
     
     fm = currentProgram.getFunctionManager()
     best_func = None
