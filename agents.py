@@ -1,8 +1,11 @@
 import os
 import openai
 import subprocess
+import logging
 from google import genai
 from google.genai import types
+
+logger = logging.getLogger("cthaeh.agents")
 
 def fetch_available_models(provider: str, api_key: str) -> list:
     """Fetch dynamically listing of models from the provider's API."""
@@ -201,16 +204,18 @@ def run_compiler_agent(poc_code: str, ioctl_code: str, language: str, ai_conf: d
             
         prompt = f"The following Windows C++ exploit PoC failed to compile.\n\nCompiler Output:\n{output}\n\nPoC Code:\n```cpp\n{current_code}\n```\n\nPlease fix the compilation errors. Output ONLY the raw fixed C++ code, no markdown wrappers, no explanations. Make sure it includes necessary headers like <windows.h>, <iostream>, and properly links or dynamically loads functions like NtQuerySystemInformation if needed."
         
+        logger.debug(f"Attempting compilation retry {attempt+1}/3. Calling Compiler Agent to auto-fix errors.")
         fixed_code = call_llm(prompt, ai_conf, api_key, temperature=0.1)
         
-        if fixed_code.startswith("```cpp"):
-            fixed_code = fixed_code[6:]
-        elif fixed_code.startswith("```c"):
-            fixed_code = fixed_code[4:]
-        if fixed_code.endswith("```"):
-            fixed_code = fixed_code[:-3]
+        if fixed_code.startswith("```cpp\n"):
+            fixed_code = fixed_code[7:]
+        elif fixed_code.startswith("```c\n"):
+            fixed_code = fixed_code[5:]
+        if fixed_code.endswith("```\n"):
+            fixed_code = fixed_code[:-4]
         current_code = fixed_code.strip()
         
+    logger.error("Compiler Agent exhausted max retries without success.")
     return {"success": False, "exe_path": "", "compiler_output": "Failed to fix after 3 attempts.\nLast error:\n" + output, "error": "Max compilation attempts reached.", "fixed_poc_code": current_code}
 
 def run_reporter_agent(driver_name: str, driver_path: str, finding_check: str, ioctl_code: str, reverser_analysis: str, poc_code: str, language: str, ai_conf: dict, api_key: str) -> str:

@@ -9,7 +9,24 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 
+import logging
+import argparse
+import uvicorn
+
 import agents
+
+# ---------------------------------------------------------
+# Logging Configuration
+# ---------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("cthaeh.log", mode='a', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger("cthaeh.server")
 
 app = FastAPI(title="Cthaeh AVR Backend")
 
@@ -146,10 +163,11 @@ async def analyze_driver(req: AnalyzeRequest):
     driver_path = os.path.normpath(driver_path)
 
     if not os.path.exists(driver_path):
+        logger.error(f"Driver file not found: {req.driver_path} (Resolved: {driver_path})")
         return AnalyzeResponse(status="error", error=f"Driver file not found: {req.driver_path} (Resolved: {driver_path})")
     
     # Step 1: Extract Decompiled Code using Ghidra Headless
-    print(f"[*] Starting extraction for {driver_path} (IOCTL: {req.ioctl_code})...")
+    logger.info(f"Starting extraction for {driver_path} (IOCTL: {req.ioctl_code})...")
     
     # Create a completely unique temp directory for this specific extraction job
     # to prevent collisions when 'Analyze All' hits the backend concurrently.
@@ -178,6 +196,8 @@ async def analyze_driver(req: AnalyzeRequest):
         "-postScript", os.path.basename(script_path), output_c_file, req.ioctl_code
     ]
     
+    logger.debug(f"Executing Ghidra command: {' '.join(cmd)}")
+    
     process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=subprocess.PIPE,
@@ -189,13 +209,14 @@ async def analyze_driver(req: AnalyzeRequest):
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)
     except asyncio.TimeoutError:
         try:
+            logger.warning("Ghidra extraction timed out after 5 minutes. Killing process...")
             process.kill()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to kill ghidra process: {e}")
         return AnalyzeResponse(status="error", error="Ghidra extraction timed out after 5 minutes. The driver may be heavily obfuscated (e.g. anti-cheat) or too large.")
     
     if process.returncode != 0 and process.returncode != 128:  # 128 is thrown if script exits cleanly but project doesn't save
-        print("Ghidra Error:\n", stderr.decode('utf-8', errors='ignore'))
+        logger.error(f"Ghidra Error (Code {process.returncode}):\n{stderr.decode('utf-8', errors='ignore')}")
         return AnalyzeResponse(status="error", error="Failed to extract decompiled code via Ghidra.")
         
     if not os.path.exists(output_c_file):
@@ -255,9 +276,11 @@ async def compile_poc(req: CompileRequest):
 @app.post("/api/run_poc", response_model=RunPocResponse)
 async def run_poc(req: RunPocRequest):
     if not os.path.exists(req.exe_path):
+        logger.error(f"Failed to run PoC: Executable not found ({req.exe_path})")
         return RunPocResponse(status="error", error=f"Executable not found: {req.exe_path}. Did compilation fail?")
         
     try:
+        logger.warning(f"Executing PoC on host system: {req.exe_path}")
         # Warning: Direct execution of PoC on the host system.
         process = await asyncio.create_subprocess_exec(
             req.exe_path,
@@ -268,11 +291,15 @@ async def run_poc(req: RunPocRequest):
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10.0)
         
         output = stdout.decode('utf-8', errors='ignore') + "\n" + stderr.decode('utf-8', errors='ignore')
+        logger.info("PoC Execution completed.")
+        logger.debug(f"PoC Output:\n{output}")
         return RunPocResponse(status="success", output=output)
     except asyncio.TimeoutError:
+        logger.warning("PoC execution timed out after 10 seconds. Terminating process.")
         process.kill()
         return RunPocResponse(status="error", error="Execution timed out after 10 seconds. Process killed.")
     except Exception as e:
+        logger.error(f"Failed to execute PoC: {e}")
         return RunPocResponse(status="error", error=f"Failed to execute PoC: {str(e)}")
 
 @app.post("/api/report", response_model=ReportResponse)
@@ -281,6 +308,7 @@ async def generate_report(req: ReportRequest):
     api_key = ai_conf.get("apiKey", "").strip()
     
     try:
+        logger.info(f"Generating Vulnerability Report for {req.driver_name}...")
         report = agents.run_reporter_agent(
             req.driver_name,
             req.driver_path,
@@ -292,8 +320,10 @@ async def generate_report(req: ReportRequest):
             ai_conf,
             api_key
         )
+        logger.info("Report generation successful.")
         return ReportResponse(status="success", report_markdown=report)
     except Exception as e:
+        logger.error(f"Report generation failed: {e}")
         return ReportResponse(status="error", error=str(e))
 
 @app.get("/triage_results.json")
@@ -306,3 +336,17 @@ async def get_triage_results():
 
 # Mount the static web_ui directory to the root /
 app.mount("/", StaticFiles(directory="web_ui", html=True), name="web_ui")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Cthaeh Intelligence Backend API Server")
+    parser.add_argument("--port", type=int, default=8080, help="Port to bind the API server on")
+    parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging for agent prompts and responses")
+    
+    args = parser.parse_args()
+    
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("DEBUG mode enabled - verbose logging activated.")
+    
+    # Run uvicorn programmatically
+    uvicorn.run("server:app", host="127.0.0.0", port=args.port, log_level="debug" if args.debug else "info")
