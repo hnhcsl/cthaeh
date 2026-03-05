@@ -355,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     analyzableFindings.push({ index, ioctlCode, check: f.check });
                 }
 
-                const cacheKey = `${driver.driver.path}_${ioctlCode}`;
+                const cacheKey = `${driver.driver.path}_${ioctlCode}_${f.check}`;
                 const cachedResult = aiCache[cacheKey];
 
                 let analyzeBtnHtml = '';
@@ -477,7 +477,7 @@ Description: ${cleanString(versionInfo.FileDescription)}
 
         // Function to run analysis for a specific finding
         const runAnalysis = async (finding, force = false) => {
-            const cacheKey = `${driver.driver.path}_${finding.ioctlCode}`;
+            const cacheKey = `${driver.driver.path}_${finding.ioctlCode}_${finding.check}`;
 
             // Re-query elements so closures don't hold stale DOM references
             const getFreshElements = () => {
