@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const langToggleBtn = document.getElementById('lang-toggle-btn');
 
     let driversData = [];
+    let aiCache = {}; // Phase 4: In-memory cache for AI results
 
     // --- i18n Dictionary ---
     const translations = {
@@ -25,7 +26,21 @@ document.addEventListener('DOMContentLoaded', () => {
             filter_medium: "Medium Risk",
             filter_low: "Low Risk",
             loading_results: "Loading triage results...",
-            lang_toggle: "🌐 切换至中文"
+            lang_toggle: "🌐 切换至中文",
+            modal_file_info: "File Information",
+            modal_version_mani: "Version Manifest",
+            modal_vuln_findings: "Vulnerability Findings",
+            modal_no_indicators: "No specific vulnerability indicators triggered.",
+            modal_verified_cna: "🛡️ Verified CNA Vendor: ",
+            modal_bounty_prog: "This vendor has a vulnerability disclosure program.",
+            modal_view_bounty: "View Bounty Program ↗",
+            btn_analyze: "🧠 Analyze",
+            btn_analyzing: "⏳ Analyzing...",
+            btn_analyzed: "✅ Analyzed",
+            btn_failed: "❌ Failed",
+            waking_agents: "Waking agents for ",
+            reverser_title: "🕵️ Reverser Analysis",
+            exploiter_title: "💣 Exploiter PoC"
         },
         zh: {
             app_title: "🌳 Cthaeh <span>驱动分诊台面板</span>",
@@ -41,7 +56,21 @@ document.addEventListener('DOMContentLoaded', () => {
             filter_medium: "中等风险",
             filter_low: "低风险",
             loading_results: "正在加载分诊结果...",
-            lang_toggle: "🌐 Switch to English"
+            lang_toggle: "🌐 Switch to English",
+            modal_file_info: "文件信息",
+            modal_version_mani: "版本清单",
+            modal_vuln_findings: "漏洞特征发现",
+            modal_no_indicators: "未触发特定的漏洞特征指标。",
+            modal_verified_cna: "🛡️ 认证的 CNA 厂商：",
+            modal_bounty_prog: "该厂商拥有漏洞悬赏披露计划。",
+            modal_view_bounty: "查看漏洞悬赏计划 ↗",
+            btn_analyze: "🧠 深度分析",
+            btn_analyzing: "⏳ 分析中...",
+            btn_analyzed: "✅ 已分析",
+            btn_failed: "❌ 分析失败",
+            waking_agents: "正在唤醒特工处理 ",
+            reverser_title: "🕵️ 逆向特工分析",
+            exploiter_title: "💣 利用特工 PoC"
         }
     };
 
@@ -188,6 +217,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     analyzableFindings.push({ index, ioctlCode, check: f.check });
                 }
 
+                const cacheKey = `${driver.driver.path}_${ioctlCode}`;
+                const cached = aiCache[cacheKey];
+
                 return `
                 <div class="finding-item" style="position: relative;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -196,23 +228,23 @@ document.addEventListener('DOMContentLoaded', () => {
                             <strong>${f.check}</strong><br>
                             <span style="color: var(--text-secondary)">${f.detail}</span>
                         </div>
-                        ${canAnalyze ? `<button class="ai-btn-small" id="btn-analyze-${index}" data-ioctl="${ioctlCode}">🧠 Analyze</button>` : ''}
+                        ${canAnalyze ? `<button class="ai-btn-small" id="btn-analyze-${index}" data-ioctl="${ioctlCode}" ${cached ? 'disabled' : ''}>${cached ? translations[currentLang]['btn_analyzed'] : translations[currentLang]['btn_analyze']}</button>` : ''}
                     </div>
                     
-                    <!-- Per-finding AI Results Container (Hidden by default) -->
-                    <div id="ai-container-${index}" class="ai-analysis-section" style="display: none; margin-top: 1rem; padding: 1rem; border-color: rgba(168, 85, 247, 0.2);">
+                    <!-- Per-finding AI Results Container -->
+                    <div id="ai-container-${index}" class="ai-analysis-section" style="display: ${cached ? 'block' : 'none'}; margin-top: 1rem; padding: 1rem; border-color: rgba(168, 85, 247, 0.2);">
                         <div id="ai-loading-${index}" class="ai-loading-container" style="display: none; padding: 1rem 0;">
                             <div class="spinner"></div>
-                            <p id="ai-status-${index}" style="margin: 0; font-size: 0.9rem;">Waking agents for ${ioctlCode}...</p>
+                            <p id="ai-status-${index}" style="margin: 0; font-size: 0.9rem;"><span data-i18n="waking_agents">Waking agents for </span>${ioctlCode}...</p>
                         </div>
-                        <div id="ai-results-${index}" style="display: none;">
+                        <div id="ai-results-${index}" style="display: ${cached ? 'block' : 'none'};">
                             <div class="ai-reverser-box" style="margin-bottom: 0.5rem;">
-                                <h3 style="font-size: 0.9rem; margin-top: 0;">🕵️ Reverser Analysis</h3>
-                                <pre id="reverser-output-${index}" style="font-size: 0.8rem; padding: 0.5rem;"></pre>
+                                <h3 style="font-size: 0.9rem; margin-top: 0;" data-i18n="reverser_title">🕵️ Reverser Analysis</h3>
+                                <pre id="reverser-output-${index}" style="font-size: 0.8rem; padding: 0.5rem;">${cached ? (cached.reverser_analysis || '') : ''}</pre>
                             </div>
                             <div class="ai-exploiter-box">
-                                <h3 style="font-size: 0.9rem; margin-top: 0;">💣 Exploiter PoC</h3>
-                                <pre id="exploiter-output-${index}" class="code-block" style="font-size: 0.8rem; padding: 0.5rem;"></pre>
+                                <h3 style="font-size: 0.9rem; margin-top: 0;" data-i18n="exploiter_title">💣 Exploiter PoC</h3>
+                                <pre id="exploiter-output-${index}" class="code-block" style="font-size: 0.8rem; padding: 0.5rem;">${cached ? (cached.poc_code || '') : ''}</pre>
                             </div>
                         </div>
                     </div>
@@ -238,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
                 <div>
-                    <h3>File Information</h3>
+                    <h3 data-i18n="modal_file_info">File Information</h3>
                     <div class="code-block">
 Path: ${driver.driver.path}
 Size: ${(driver.driver.size / 1024).toFixed(2)} KB
@@ -249,7 +281,7 @@ Language: ${driver.driver.language}
                     </div>
                 </div>
                 <div>
-                    <h3>Version Manifest</h3>
+                    <h3 data-i18n="modal_version_mani">Version Manifest</h3>
                     <div class="code-block">
 Product: ${cleanString(versionInfo.ProductName)}
 Version: ${cleanString(versionInfo.FileVersion)}
@@ -261,15 +293,15 @@ Description: ${cleanString(versionInfo.FileDescription)}
 
             ${driver.vendor_info && driver.vendor_info.is_cna ? `
                 <div style="margin-bottom: 2rem; border-left: 4px solid #ffd700; padding-left: 1rem; background: rgba(255, 215, 0, 0.1); padding: 1rem;">
-                    <strong>🛡️ Verified CNA Vendor: ${vendor}</strong><br>
-                    This vendor has a vulnerability disclosure program.<br>
-                    <a href="${driver.vendor_info.bounty_url}" target="_blank" style="color: #38bdf8; text-decoration: none;">View Bounty Program ↗</a>
+                    <strong><span data-i18n="modal_verified_cna">🛡️ Verified CNA Vendor: </span>${vendor}</strong><br>
+                    <span data-i18n="modal_bounty_prog">This vendor has a vulnerability disclosure program.</span><br>
+                    <a href="${driver.vendor_info.bounty_url}" target="_blank" style="color: #38bdf8; text-decoration: none;" data-i18n="modal_view_bounty">View Bounty Program ↗</a>
                 </div>
             ` : ''}
 
-            <h3>Vulnerability Findings (${driver.findings_count || 0})</h3>
+            <h3><span data-i18n="modal_vuln_findings">Vulnerability Findings</span> (${driver.findings_count || 0})</h3>
             <div style="margin-top: 1rem;">
-                ${findingsHtml || '<p>No specific vulnerability indicators triggered.</p>'}
+                ${findingsHtml || `<p data-i18n="modal_no_indicators">No specific vulnerability indicators triggered.</p>`}
             </div>
         `;
 
@@ -283,28 +315,33 @@ Description: ${cleanString(versionInfo.FileDescription)}
             const revOut = document.getElementById(`reverser-output-${finding.index}`);
             const expOut = document.getElementById(`exploiter-output-${finding.index}`);
 
-            if (btn) {
-                btn.disabled = true;
-                btn.textContent = '⏳ Analyzing...';
-            }
+            btn.disabled = true;
+            btn.textContent = translations[currentLang]['btn_analyzing'];
 
             container.style.display = 'block';
             loading.style.display = 'flex';
             results.style.display = 'none';
-            statusTxt.textContent = `Extracting & Analyzing ${finding.ioctlCode}...`;
+            // Translate the static part, keeping the dynamic IOCTL code
+            statusTxt.innerHTML = `<span data-i18n="waking_agents">${translations[currentLang]['waking_agents']}</span>${finding.ioctlCode}...`;
+
+            const cacheKey = `${driver.driver.path}_${finding.ioctlCode}`;
 
             try {
-                const response = await fetch('/api/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        driver_path: driver.driver.path,
-                        ioctl_code: finding.ioctlCode,
-                        language: currentLang
-                    })
-                });
+                // Check Cache first
+                let result = aiCache[cacheKey];
 
-                const result = await response.json();
+                if (!result) {
+                    const response = await fetch('/api/analyze', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            driver_path: driver.driver.path,
+                            ioctl_code: finding.ioctlCode,
+                            language: currentLang
+                        })
+                    });
+                    result = await response.json();
+                }
 
                 loading.style.display = 'none';
                 results.style.display = 'block';
@@ -312,18 +349,21 @@ Description: ${cleanString(versionInfo.FileDescription)}
                 if (result.status === 'error') {
                     revOut.innerHTML = `<span style="color:red">Error: ${result.error}</span>`;
                     expOut.textContent = 'Aborted.';
-                    if (btn) btn.textContent = '❌ Failed';
+                    btn.textContent = translations[currentLang]['btn_failed'];
                     return;
                 }
+
+                // Cache the successful result
+                aiCache[cacheKey] = result;
 
                 revOut.textContent = result.reverser_analysis;
 
                 if (result.vuln_exists) {
                     expOut.textContent = result.poc_code;
-                    if (btn) btn.textContent = '🔥 Vuln Found';
+                    btn.textContent = translations[currentLang]['btn_analyzed'];
                 } else {
                     expOut.innerHTML = `<span style="color:var(--text-secondary)">False Positive. No actionable PoC generated.</span>`;
-                    if (btn) btn.textContent = '🛡️ Safe';
+                    btn.textContent = translations[currentLang]['btn_analyzed'];
                 }
 
             } catch (err) {
@@ -363,6 +403,9 @@ Description: ${cleanString(versionInfo.FileDescription)}
                 analyzeAllBtn.textContent = '✅ Batch Complete';
             });
         }
+
+        // Translate the newly injected modal content
+        setLanguage(currentLang);
 
         modal.classList.add('active');
         document.body.style.overflow = 'hidden'; // Prevent background scrolling
