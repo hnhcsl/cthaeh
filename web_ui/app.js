@@ -68,9 +68,9 @@ document.addEventListener('DOMContentLoaded', () => {
             btn_analyzing: "⏳ 分析中...",
             btn_analyzed: "✅ 已分析",
             btn_failed: "❌ 分析失败",
-            waking_agents: "正在唤醒特工处理 ",
-            reverser_title: "🕵️ 逆向特工分析",
-            exploiter_title: "💣 利用特工 PoC"
+            waking_agents: "正在唤醒AI Agent处理 ",
+            reverser_title: "🕵️ 逆向Agent分析",
+            exploiter_title: "💣 利用Agent生成PoC"
         }
     };
 
@@ -228,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <strong>${f.check}</strong><br>
                             <span style="color: var(--text-secondary)">${f.detail}</span>
                         </div>
-                        ${canAnalyze ? `<button class="ai-btn-small" id="btn-analyze-${index}" data-ioctl="${ioctlCode}" ${cached ? 'disabled' : ''}>${cached ? translations[currentLang]['btn_analyzed'] : translations[currentLang]['btn_analyze']}</button>` : ''}
+                        ${canAnalyze ? `<button class="ai-btn-small" id="btn-analyze-${index}" data-ioctl="${ioctlCode}" title="Click to force retry">${cached ? translations[currentLang]['btn_analyzed'] + ' 🔄' : translations[currentLang]['btn_analyze']}</button>` : ''}
                     </div>
                     
                     <!-- Per-finding AI Results Container -->
@@ -295,7 +295,7 @@ Description: ${cleanString(versionInfo.FileDescription)}
                 <div style="margin-bottom: 2rem; border-left: 4px solid #ffd700; padding-left: 1rem; background: rgba(255, 215, 0, 0.1); padding: 1rem;">
                     <strong><span data-i18n="modal_verified_cna">🛡️ Verified CNA Vendor: </span>${vendor}</strong><br>
                     <span data-i18n="modal_bounty_prog">This vendor has a vulnerability disclosure program.</span><br>
-                    <a href="${driver.vendor_info.bounty_url}" target="_blank" style="color: #38bdf8; text-decoration: none;" data-i18n="modal_view_bounty">View Bounty Program ↗</a>
+                    ${driver.vendor_info.bounty_url && driver.vendor_info.bounty_url.startsWith('http') ? `<a href="${driver.vendor_info.bounty_url}" target="_blank" style="color: #38bdf8; text-decoration: none;" data-i18n="modal_view_bounty">View Bounty Program ↗</a>` : ''}
                 </div>
             ` : ''}
 
@@ -306,7 +306,7 @@ Description: ${cleanString(versionInfo.FileDescription)}
         `;
 
         // Function to run analysis for a specific finding
-        const runAnalysis = async (finding) => {
+        const runAnalysis = async (finding, force = false) => {
             const btn = document.getElementById(`btn-analyze-${finding.index}`);
             const container = document.getElementById(`ai-container-${finding.index}`);
             const loading = document.getElementById(`ai-loading-${finding.index}`);
@@ -315,8 +315,10 @@ Description: ${cleanString(versionInfo.FileDescription)}
             const revOut = document.getElementById(`reverser-output-${finding.index}`);
             const expOut = document.getElementById(`exploiter-output-${finding.index}`);
 
-            btn.disabled = true;
-            btn.textContent = translations[currentLang]['btn_analyzing'];
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = translations[currentLang]['btn_analyzing'];
+            }
 
             container.style.display = 'block';
             loading.style.display = 'flex';
@@ -327,8 +329,8 @@ Description: ${cleanString(versionInfo.FileDescription)}
             const cacheKey = `${driver.driver.path}_${finding.ioctlCode}`;
 
             try {
-                // Check Cache first
-                let result = aiCache[cacheKey];
+                // Check Cache first, unless force retry
+                let result = force ? null : aiCache[cacheKey];
 
                 if (!result) {
                     const response = await fetch('/api/analyze', {
@@ -349,7 +351,10 @@ Description: ${cleanString(versionInfo.FileDescription)}
                 if (result.status === 'error') {
                     revOut.innerHTML = `<span style="color:red">Error: ${result.error}</span>`;
                     expOut.textContent = 'Aborted.';
-                    btn.textContent = translations[currentLang]['btn_failed'];
+                    if (btn) {
+                        btn.textContent = translations[currentLang]['btn_failed'];
+                        btn.disabled = false; // Allow user to click again to retry
+                    }
                     return;
                 }
 
@@ -360,10 +365,16 @@ Description: ${cleanString(versionInfo.FileDescription)}
 
                 if (result.vuln_exists) {
                     expOut.textContent = result.poc_code;
-                    btn.textContent = translations[currentLang]['btn_analyzed'];
+                    if (btn) {
+                        btn.textContent = translations[currentLang]['btn_analyzed'] + ' 🔄';
+                        btn.disabled = false; // Re-enable for manual retry
+                    }
                 } else {
                     expOut.innerHTML = `<span style="color:var(--text-secondary)">False Positive. No actionable PoC generated.</span>`;
-                    btn.textContent = translations[currentLang]['btn_analyzed'];
+                    if (btn) {
+                        btn.textContent = translations[currentLang]['btn_analyzed'] + ' 🔄';
+                        btn.disabled = false; // Re-enable for manual retry
+                    }
                 }
 
             } catch (err) {
@@ -380,7 +391,8 @@ Description: ${cleanString(versionInfo.FileDescription)}
         analyzableFindings.forEach(finding => {
             const btn = document.getElementById(`btn-analyze-${finding.index}`);
             if (btn) {
-                btn.addEventListener('click', () => runAnalysis(finding));
+                // If the user clicks manually, force a fresh request (bypass cache)
+                btn.addEventListener('click', () => runAnalysis(finding, true));
             }
         });
 
