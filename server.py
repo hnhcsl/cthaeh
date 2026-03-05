@@ -349,4 +349,4 @@ if __name__ == "__main__":
         logger.debug("DEBUG mode enabled - verbose logging activated.")
     
     # Run uvicorn programmatically
-    uvicorn.run("server:app", host="127.0.0.0", port=args.port, log_level="debug" if args.debug else "info")
+    uvicorn.run("server:app", host="127.0.0.1", port=args.port, log_level="debug" if args.debug else "info")
