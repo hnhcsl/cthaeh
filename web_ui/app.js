@@ -5,8 +5,82 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('driver-modal');
     const modalBody = document.getElementById('modal-body');
     const closeBtn = document.querySelector('.close-btn');
+    const langToggleBtn = document.getElementById('lang-toggle-btn');
 
     let driversData = [];
+
+    // --- i18n Dictionary ---
+    const translations = {
+        en: {
+            app_title: "🌳 Cthaeh <span>Driver Triage Dashboard</span>",
+            app_subtitle: "Automated vulnerability assessment for Windows Kernel Drivers",
+            stat_total: "Total Drivers",
+            stat_high: "High Risk",
+            stat_medium: "Medium Risk",
+            stat_low: "Low Risk",
+            search_placeholder: "Search by driver name, vendor, or path...",
+            filter_all: "All Risk Levels",
+            filter_critical: "Critical",
+            filter_high: "High Risk",
+            filter_medium: "Medium Risk",
+            filter_low: "Low Risk",
+            loading_results: "Loading triage results...",
+            lang_toggle: "🌐 切换至中文"
+        },
+        zh: {
+            app_title: "🌳 Cthaeh <span>驱动分诊台面板</span>",
+            app_subtitle: "Windows 内核驱动漏洞自动化评估工具",
+            stat_total: "驱动总数",
+            stat_high: "高危风险",
+            stat_medium: "中度风险",
+            stat_low: "低度风险",
+            search_placeholder: "搜索驱动名称、厂商或路径...",
+            filter_all: "所有风险等级",
+            filter_critical: "极危",
+            filter_high: "高风险",
+            filter_medium: "中等风险",
+            filter_low: "低风险",
+            loading_results: "正在加载分诊结果...",
+            lang_toggle: "🌐 Switch to English"
+        }
+    };
+
+    let currentLang = localStorage.getItem('cthaeh_lang') || 'en';
+
+    function setLanguage(lang) {
+        currentLang = lang;
+        localStorage.setItem('cthaeh_lang', lang);
+
+        // Update all data-i18n elements
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (translations[lang][key]) {
+                el.innerHTML = translations[lang][key];
+            }
+        });
+
+        // Update placeholders
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            const key = el.getAttribute('data-i18n-placeholder');
+            if (translations[lang][key]) {
+                el.setAttribute('placeholder', translations[lang][key]);
+            }
+        });
+
+        // Update the toggle button text itself (special case)
+        if (langToggleBtn) {
+            langToggleBtn.innerHTML = translations[lang]['lang_toggle'];
+        }
+    }
+
+    if (langToggleBtn) {
+        langToggleBtn.addEventListener('click', () => {
+            setLanguage(currentLang === 'en' ? 'zh' : 'en');
+        });
+    }
+
+    // Initialize language on startup
+    setLanguage(currentLang);
 
     // Fetch the JSON data
     fetch('/triage_results.json')
@@ -225,7 +299,8 @@ Description: ${cleanString(versionInfo.FileDescription)}
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         driver_path: driver.driver.path,
-                        ioctl_code: finding.ioctlCode
+                        ioctl_code: finding.ioctlCode,
+                        language: currentLang
                     })
                 });
 

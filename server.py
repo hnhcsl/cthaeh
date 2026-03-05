@@ -34,6 +34,7 @@ class AnalyzeRequest(BaseModel):
     driver_path: str
     ioctl_code: str = "Unknown" # Optional, if the user highlights a specific one
     model_choice: str = "gemini"
+    language: str = "en" # "en" or "zh"
 
 class AnalyzeResponse(BaseModel):
     status: str
@@ -109,7 +110,7 @@ async def analyze_driver(req: AnalyzeRequest):
     # Step 2: Agent 1 - Reverser
     print(f"[*] Triggering Reverser Agent on {len(decompiled_code)} bytes of decompiled code...")
     try:
-        rev_res = agents.run_reverser_agent(GEMINI_API_KEY, model_name, decompiled_code, req.ioctl_code)
+        rev_res = agents.run_reverser_agent(GEMINI_API_KEY, model_name, decompiled_code, req.ioctl_code, req.language)
     except Exception as e:
         return AnalyzeResponse(status="error", error=f"Reverser Agent failed: {str(e)}")
         
@@ -124,7 +125,7 @@ async def analyze_driver(req: AnalyzeRequest):
     # Step 3: Agent 2 - Exploiter
     print("[*] Vulnerability confirmed by Agent! Triggering Exploiter Agent for PoC generation...")
     try:
-        poc = agents.run_exploiter_agent(GEMINI_API_KEY, model_name, decompiled_code, device_name, req.ioctl_code, rev_res["analysis"])
+        poc = agents.run_exploiter_agent(GEMINI_API_KEY, model_name, decompiled_code, device_name, req.ioctl_code, rev_res["analysis"], req.language)
     except Exception as e:
          return AnalyzeResponse(status="success_partial", reverser_analysis=rev_res["analysis"], vuln_exists=True, poc_code=f"Exploiter Agent failed to generate PoC: {str(e)}")
 

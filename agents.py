@@ -2,7 +2,11 @@ import os
 from google import genai
 from google.genai import types
 
-def build_reverser_prompt(decompiled_code: str, ioctl_code: str) -> str:
+def build_reverser_prompt(decompiled_code: str, ioctl_code: str, language: str = "en") -> str:
+    lang_instruction = ""
+    if language == "zh":
+        lang_instruction = "\nCRITICAL: You MUST write your detailed vulnerability analysis and reasoning strictly in Simplified Chinese (简体中文). However, keep technical terms like 'buffer overflow' or 'Use-After-Free' in English if appropriate."
+
     return f"""
 You are a top-tier Windows kernel vulnerability researcher.
 Analyze the following decompiled C code from a Windows kernel driver's IOCTL dispatch routine.
@@ -19,13 +23,18 @@ Code:
 {decompiled_code}
 ```
 
-Provide a brief, step-by-step root cause analysis if a vulnerability exists.
+Provide a brief, step-by-step root cause analysis if a vulnerability exists.{lang_instruction}
+
 At the very end of your response, output exactly one of these two strings (on a new line):
 [VULN_EXISTS=TRUE]
 [VULN_EXISTS=FALSE]
 """
 
-def build_exploiter_prompt(decompiled_code: str, device_name: str, ioctl_code: str, reverser_analysis: str) -> str:
+def build_exploiter_prompt(decompiled_code: str, device_name: str, ioctl_code: str, reverser_analysis: str, language: str = "en") -> str:
+    lang_instruction = ""
+    if language == "zh":
+        lang_instruction = "Any explanation text outside of the code block MUST be written in Simplified Chinese (简体中文). However, the C++ code itself and its comments MUST remain in English."
+
     return f"""
 You are a senior exploit developer.
 Based on the following vulnerability analysis from the Reverser Agent, write a standalone C++ Proof-of-Concept (PoC) exploit for Windows.
@@ -43,12 +52,13 @@ Decompiled Code Context:
 
 Write a complete, compilable Windows C++ program (using <windows.h>, CreateFile, DeviceIoControl) that triggers this vulnerability.
 If it's an arbitrary write, make it write `0x4141414141414141` to `0x4242424242424242` as a demonstration.
+{lang_instruction}
 Output ONLY the C++ code block. No markdown wrappers around the file, just the raw code.
 """
 
-def run_reverser_agent(api_key: str, model_name: str, decompiled_code: str, ioctl_code: str) -> dict:
+def run_reverser_agent(api_key: str, model_name: str, decompiled_code: str, ioctl_code: str, language: str = "en") -> dict:
     client = genai.Client(api_key=api_key)
-    prompt = build_reverser_prompt(decompiled_code, ioctl_code)
+    prompt = build_reverser_prompt(decompiled_code, ioctl_code, language)
     
     response = client.models.generate_content(
         model=model_name,
@@ -69,9 +79,9 @@ def run_reverser_agent(api_key: str, model_name: str, decompiled_code: str, ioct
         "vuln_exists": vuln_exists
     }
 
-def run_exploiter_agent(api_key: str, model_name: str, decompiled_code: str, device_name: str, ioctl_code: str, reverser_analysis: str) -> str:
+def run_exploiter_agent(api_key: str, model_name: str, decompiled_code: str, device_name: str, ioctl_code: str, reverser_analysis: str, language: str = "en") -> str:
     client = genai.Client(api_key=api_key)
-    prompt = build_exploiter_prompt(decompiled_code, device_name, ioctl_code, reverser_analysis)
+    prompt = build_exploiter_prompt(decompiled_code, device_name, ioctl_code, reverser_analysis, language)
     
     response = client.models.generate_content(
         model=model_name,

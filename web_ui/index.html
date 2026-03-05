@@ -15,43 +15,51 @@
     <div class="glass-bg"></div>
     <div class="container">
         <header>
-            <div class="header-content">
-                <h1>🌳 Cthaeh <span>Driver Triage Dashboard</span></h1>
-                <p>Automated vulnerability assessment for Windows Kernel Drivers</p>
+            <div class="header-content"
+                style="display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start;">
+                <div>
+                    <h1 data-i18n="app_title">🌳 Cthaeh <span>Driver Triage Dashboard</span></h1>
+                    <p data-i18n="app_subtitle">Automated vulnerability assessment for Windows Kernel Drivers</p>
+                </div>
+                <!-- Language Toggle -->
+                <button id="lang-toggle-btn" class="ai-btn-small"
+                    style="font-size: 0.75rem; background: linear-gradient(135deg, #475569, #334155); color: #e2e8f0; padding: 0.3rem 0.6rem;">🌐
+                    切换至中文</button>
             </div>
             <div class="stats-panel" id="stats-panel">
                 <div class="stat-card">
-                    <h3>Total Drivers</h3>
+                    <h3 data-i18n="stat_total">Total Drivers</h3>
                     <p id="stat-total">0</p>
                 </div>
                 <div class="stat-card high-risk">
-                    <h3>High Risk</h3>
+                    <h3 data-i18n="stat_high">High Risk</h3>
                     <p id="stat-high">0</p>
                 </div>
                 <div class="stat-card medium-risk">
-                    <h3>Medium Risk</h3>
+                    <h3 data-i18n="stat_medium">Medium Risk</h3>
                     <p id="stat-medium">0</p>
                 </div>
                 <div class="stat-card low-risk">
-                    <h3>Low Risk</h3>
+                    <h3 data-i18n="stat_low">Low Risk</h3>
                     <p id="stat-low">0</p>
                 </div>
             </div>
         </header>
 
         <div class="filters">
-            <input type="text" id="search-input" placeholder="Search by driver name, vendor, or path...">
+            <input type="text" id="search-input" data-i18n-placeholder="search_placeholder"
+                placeholder="Search by driver name, vendor, or path...">
             <select id="risk-filter">
-                <option value="ALL">All Risk Levels</option>
-                <option value="CRITICAL">Critical</option>
-                <option value="HIGH">High Risk</option>
-                <option value="MEDIUM">Medium Risk</option>
-                <option value="LOW">Low Risk</option>
+                <option value="ALL" data-i18n="filter_all">All Risk Levels</option>
+                <option value="CRITICAL" data-i18n="filter_critical">Critical</option>
+                <option value="HIGH" data-i18n="filter_high">High Risk</option>
+                <option value="MEDIUM" data-i18n="filter_medium">Medium Risk</option>
+                <option value="LOW" data-i18n="filter_low">Low Risk</option>
             </select>
         </div>
 
         <main id="driver-list" class="driver-grid">
-            <div class="loading">Loading triage results...</div>
+            <div class="loading" data-i18n="loading_results">Loading triage results...</div>
         </main>
     </div>
 
