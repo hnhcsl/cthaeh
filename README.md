@@ -160,6 +160,19 @@ python run_triage.py --explain example.sys
 
 The top scorer is auto-explained after every scan.
 
+### 🌐 Interactive Web UI Dashboard
+Cthaeh now features a built-in, Glassmorphism-styled local web dashboard to review your triage results visually.
+
+```bash
+# After running triage, start the local server in the project root:
+python -m http.server 8000
+```
+Then open `http://localhost:8000/web_ui/index.html` in your browser. 
+The Web UI provides:
+- High-level categorization of analyzed drivers
+- Search filtering by vendor, driver name, or class
+- Interactive modals showing full path, versions, findings, scores, and CNA bounty links.
+
 ## Files
 
 | File | Purpose |
@@ -202,7 +215,7 @@ python run_triage.py C:\drivers --no-json --no-report  # CSV only
 ## The Workflow
 
 ```
-DriverStore --> extract --> Cthaeh triage --> ranked list --> manual audit
+DriverStore (or C:\Program Files\) --> extract --> Cthaeh triage --> Web UI review --> ranked list --> manual audit
                                                                   |
                                              Claude Code + Ghidra MCP --> vuln
 ```
@@ -210,9 +223,9 @@ DriverStore --> extract --> Cthaeh triage --> ranked list --> manual audit
 ## Requirements
 
 - Python 3.8+
-- Ghidra 10.x+ (headless mode)
-- `pip install -r requirements.txt` (pefile)
-- Windows (for DriverStore extraction; analysis works on any OS)
+- Ghidra 10.x+ (headless mode) - **Now fully supports Ghidra 12 API changes**
+- `pip install -r requirements.txt` (pefile, requests, pyghidra, jpype1)
+- Windows (for complete driver extraction; analysis works on any OS)
 
 ## Acknowledgments
 

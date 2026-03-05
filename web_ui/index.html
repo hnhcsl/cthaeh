@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cthaeh - Driver Vulnerability Scanner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <h1>🌳 Cthaeh <span>Driver Triage Dashboard</span></h1>
+                <p>Automated vulnerability assessment for Windows Kernel Drivers</p>
+            </div>
+            <div class="stats-panel" id="stats-panel">
+                <div class="stat-card">
+                    <h3>Total Drivers</h3>
+                    <p id="stat-total">0</p>
+                </div>
+                <div class="stat-card high-risk">
+                    <h3>High Risk</h3>
+                    <p id="stat-high">0</p>
+                </div>
+                <div class="stat-card medium-risk">
+                    <h3>Medium Risk</h3>
+                    <p id="stat-medium">0</p>
+                </div>
+                <div class="stat-card low-risk">
+                    <h3>Low Risk</h3>
+                    <p id="stat-low">0</p>
+                </div>
+            </div>
+        </header>
+
+        <div class="filters">
+            <input type="text" id="search-input" placeholder="Search by driver name, vendor, or path...">
+            <select id="risk-filter">
+                <option value="ALL">All Risk Levels</option>
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High Risk</option>
+                <option value="MEDIUM">Medium Risk</option>
+                <option value="LOW">Low Risk</option>
+            </select>
+        </div>
+
+        <main id="driver-list" class="driver-grid">
+            <div class="loading">Loading triage results...</div>
+        </main>
+    </div>
+
+    <!-- Modal for Driver Details -->
+    <div id="driver-modal" class="modal">
+        <div class="modal-content glass-panel">
+            <span class="close-btn">&times;</span>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
