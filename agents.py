@@ -105,7 +105,7 @@ def call_llm(prompt: str, ai_conf: dict, api_key: str, temperature: float = 0.2)
     model_name = ai_conf.get("model", "gemini-2.5-flash")
     
     if provider == "gemini":
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key, http_options={'timeout': 300.0})
         response = client.models.generate_content(
             model=model_name,
             contents=prompt,
@@ -116,7 +116,7 @@ def call_llm(prompt: str, ai_conf: dict, api_key: str, temperature: float = 0.2)
         return response.text
         
     elif provider == "deepseek":
-        client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com", timeout=300.0)
         response = client.chat.completions.create(
             model=model_name,
             messages=[
@@ -129,7 +129,7 @@ def call_llm(prompt: str, ai_conf: dict, api_key: str, temperature: float = 0.2)
         return response.choices[0].message.content
         
     elif provider == "openai":
-        client = openai.OpenAI(api_key=api_key) # Defaults to api.openai.com
+        client = openai.OpenAI(api_key=api_key, timeout=300.0) # Defaults to api.openai.com
         response = client.chat.completions.create(
             model=model_name,
             messages=[
