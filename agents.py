@@ -1,5 +1,6 @@
 import os
 import openai
+import subprocess
 from google import genai
 from google.genai import types
 
@@ -165,3 +166,80 @@ def run_exploiter_agent(decompiled_code: str, device_name: str, ioctl_code: str,
         poc_code = poc_code[:-3]
         
     return poc_code.strip()
+
+def try_compile(source_code: str, exe_name: str) -> tuple[bool, str]:
+    with open("temp_poc.cpp", "w", encoding='utf-8') as f:
+        f.write(source_code)
+    try:
+        # Try MSVC first
+        res = subprocess.run(["cl.exe", "temp_poc.cpp", "/EHsc", "/Fe"+exe_name], capture_output=True, text=True, errors='ignore')
+        if res.returncode == 0:
+            return True, "Compiled successfully with cl.exe\n" + res.stdout
+        err_cl = res.stdout + "\n" + res.stderr
+    except FileNotFoundError:
+        err_cl = "cl.exe not found in PATH."
+        
+    try:
+        # Try g++ next
+        res = subprocess.run(["g++", "temp_poc.cpp", "-o", exe_name, "-lntdll"], capture_output=True, text=True, errors='ignore')
+        if res.returncode == 0:
+            return True, "Compiled successfully with g++\n" + res.stdout
+        err_gpp = res.stderr + "\n" + res.stdout
+    except FileNotFoundError:
+        err_gpp = "g++ not found in PATH."
+        
+    return False, f"MSVC Error:\n{err_cl}\n\nG++ Error:\n{err_gpp}\n\nPlease fix the compilation errors."
+
+def run_compiler_agent(poc_code: str, ioctl_code: str, language: str, ai_conf: dict, api_key: str) -> dict:
+    exe_name = f"poc_{ioctl_code.replace('0x', '')}.exe"
+    current_code = poc_code
+    
+    for attempt in range(3):
+        success, output = try_compile(current_code, exe_name)
+        if success:
+            return {"success": True, "exe_path": exe_name, "compiler_output": output, "fixed_poc_code": current_code}
+            
+        prompt = f"The following Windows C++ exploit PoC failed to compile.\n\nCompiler Output:\n{output}\n\nPoC Code:\n```cpp\n{current_code}\n```\n\nPlease fix the compilation errors. Output ONLY the raw fixed C++ code, no markdown wrappers, no explanations. Make sure it includes necessary headers like <windows.h>, <iostream>, and properly links or dynamically loads functions like NtQuerySystemInformation if needed."
+        
+        fixed_code = call_llm(prompt, ai_conf, api_key, temperature=0.1)
+        
+        if fixed_code.startswith("```cpp"):
+            fixed_code = fixed_code[6:]
+        elif fixed_code.startswith("```c"):
+            fixed_code = fixed_code[4:]
+        if fixed_code.endswith("```"):
+            fixed_code = fixed_code[:-3]
+        current_code = fixed_code.strip()
+        
+    return {"success": False, "exe_path": "", "compiler_output": "Failed to fix after 3 attempts.\nLast error:\n" + output, "error": "Max compilation attempts reached.", "fixed_poc_code": current_code}
+
+def run_reporter_agent(driver_name: str, driver_path: str, finding_check: str, ioctl_code: str, reverser_analysis: str, poc_code: str, language: str, ai_conf: dict, api_key: str) -> str:
+    instructions = ""
+    if language == "zh":
+        instructions = "Please output the final vulnerability disclosure report in professional Chinese."
+        
+    prompt = f"""You are a professional security researcher writing a vulnerability disclosure report for a vendor PSIRT.
+    
+Driver Name: {driver_name}
+Target Path: {driver_path}
+Vulnerability Type: {finding_check}
+Trigger IOCTL: {ioctl_code}
+
+Reverser Analysis:
+{reverser_analysis}
+
+Working Proof-of-Concept:
+```cpp
+{poc_code}
+```
+
+Write a formal security advisory report in Markdown format. It should include:
+- Title
+- Description / Impact
+- Vulnerability Details (Root Cause Analysis based on Reverser Analysis)
+- Reproduction Steps (using the provided PoC)
+- Suggested Remediation
+
+{instructions}
+"""
+    return call_llm(prompt, ai_conf, api_key, temperature=0.3)

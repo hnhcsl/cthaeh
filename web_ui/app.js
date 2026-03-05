@@ -449,6 +449,28 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <h3 style="font-size: 0.9rem; margin-top: 0;" data-i18n="exploiter_title">💣 Exploiter PoC</h3>
                                 <pre id="exploiter-output-${index}" class="code-block" style="font-size: 0.8rem; padding: 0.5rem;">${cachedResult ? (cachedResult.poc_code || '') : ''}</pre>
                             </div>
+                            
+                            <!-- Phase 9: Compile, Execute, Report -->
+                            <div id="ai-actions-${index}" style="${(cachedResult && cachedResult.vuln_exists && cachedResult.poc_code) ? 'display: flex;' : 'display: none;'} gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
+                                <button id="btn-compile-${index}" class="ai-btn-small" style="background: linear-gradient(135deg, #ca8a04, #a16207);">🔨 Compile PoC</button>
+                                <button id="btn-run-${index}" class="ai-btn-small" style="background: linear-gradient(135deg, #dc2626, #991b1b);" ${(cachedResult && cachedResult.exe_path) ? '' : 'disabled'}>⚠️ Run on Device</button>
+                                <button id="btn-report-${index}" class="ai-btn-small" style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">📝 Vendor Report</button>
+                            </div>
+
+                            <div id="compile-output-${index}" style="${(cachedResult && cachedResult.compiler_output) ? 'display: block;' : 'display: none;'} margin-top: 1rem;">
+                                <h3 style="font-size: 0.9rem; margin-top: 0; color: #facc15;">🔨 Compilation Log</h3>
+                                <pre id="compile-log-${index}" style="font-size: 0.8rem; padding: 0.5rem; border: 1px solid rgba(250, 204, 21, 0.2);">${cachedResult ? (cachedResult.compiler_output || '') : ''}</pre>
+                            </div>
+
+                            <div id="run-output-${index}" style="${(cachedResult && cachedResult.run_output) ? 'display: block;' : 'display: none;'} margin-top: 1rem;">
+                                <h3 style="font-size: 0.9rem; margin-top: 0; color: #f87171;">⚠️ Execution Output</h3>
+                                <pre id="run-log-${index}" style="font-size: 0.8rem; padding: 0.5rem; border: 1px solid rgba(248, 113, 113, 0.2);">${cachedResult ? (cachedResult.run_output || '') : ''}</pre>
+                            </div>
+
+                            <div id="report-output-${index}" style="${(cachedResult && cachedResult.report_markdown) ? 'display: block;' : 'display: none;'} margin-top: 1rem;">
+                                <h3 style="font-size: 0.9rem; margin-top: 0; color: #60a5fa;">📝 Vulnerability Report</h3>
+                                <div id="report-md-${index}" class="markdown-body" style="font-size: 0.85rem; padding: 1rem; background: rgba(30,30,40,0.8); border: 1px solid rgba(96, 165, 250, 0.3); border-radius: 4px;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -521,7 +543,17 @@ Description: ${cleanString(versionInfo.FileDescription)}
                     statusTxt: document.getElementById(`ai-status-${finding.index}`),
                     results: document.getElementById(`ai-results-${finding.index}`),
                     revOut: document.getElementById(`reverser-output-${finding.index}`),
-                    expOut: document.getElementById(`exploiter-output-${finding.index}`)
+                    expOut: document.getElementById(`exploiter-output-${finding.index}`),
+                    actionsCont: document.getElementById(`ai-actions-${finding.index}`),
+                    btnCompile: document.getElementById(`btn-compile-${finding.index}`),
+                    btnRun: document.getElementById(`btn-run-${finding.index}`),
+                    btnReport: document.getElementById(`btn-report-${finding.index}`),
+                    compOutCont: document.getElementById(`compile-output-${finding.index}`),
+                    compLog: document.getElementById(`compile-log-${finding.index}`),
+                    runOutCont: document.getElementById(`run-output-${finding.index}`),
+                    runLog: document.getElementById(`run-log-${finding.index}`),
+                    repOutCont: document.getElementById(`report-output-${finding.index}`),
+                    repMd: document.getElementById(`report-md-${finding.index}`)
                 };
             };
 
@@ -595,8 +627,10 @@ Description: ${cleanString(versionInfo.FileDescription)}
                         els.expOut.parentElement.style.display = 'block';
                         els.expOut.textContent = result.poc_code;
                         hljs.highlightElement(els.expOut);
+                        if (els.actionsCont) els.actionsCont.style.display = 'flex';
                     } else {
                         els.expOut.parentElement.style.display = 'none';
+                        if (els.actionsCont) els.actionsCont.style.display = 'none';
                     }
 
                     if (els.btn) {
@@ -624,12 +658,186 @@ Description: ${cleanString(versionInfo.FileDescription)}
             }
         };
 
+        // Hook up Markdown rendering for cached reports before attaching events
+        analyzableFindings.forEach(finding => {
+            const cacheKey = `${driver.driver.path}_${finding.ioctlCode}_${finding.check}`;
+            const cachedResult = aiCache[cacheKey];
+            const repMd = document.getElementById(`report-md-${finding.index}`);
+            if (repMd && cachedResult && cachedResult.report_markdown) {
+                repMd.innerHTML = marked.parse(cachedResult.report_markdown);
+            }
+        });
+
         // Attach event listeners to individual analyze buttons
         analyzableFindings.forEach(finding => {
+            const cacheKey = `${driver.driver.path}_${finding.ioctlCode}_${finding.check}`;
             const btn = document.getElementById(`btn-analyze-${finding.index}`);
             if (btn) {
                 // If the user clicks manually, force a fresh request (bypass cache)
                 btn.addEventListener('click', () => runAnalysis(finding, true));
+            }
+
+            const btnCompile = document.getElementById(`btn-compile-${finding.index}`);
+            const btnRun = document.getElementById(`btn-run-${finding.index}`);
+            const btnReport = document.getElementById(`btn-report-${finding.index}`);
+
+            if (btnCompile) {
+                btnCompile.addEventListener('click', async () => {
+                    const cachedResult = aiCache[cacheKey];
+                    if (!cachedResult || !cachedResult.poc_code) return;
+
+                    btnCompile.disabled = true;
+                    btnCompile.textContent = '⏳ Compiling (Auto-Fixing)...';
+
+                    try {
+                        const res = await fetch('/api/compile', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                poc_code: cachedResult.poc_code,
+                                ioctl_code: finding.ioctlCode,
+                                language: currentLang,
+                                ai_config: currentAiConfig
+                            })
+                        });
+                        const data = await res.json();
+
+                        // Re-query dynamically to avoid stale elements
+                        const compOutCont = document.getElementById(`compile-output-${finding.index}`);
+                        const compLog = document.getElementById(`compile-log-${finding.index}`);
+                        const runBtn = document.getElementById(`btn-run-${finding.index}`);
+                        const expOut = document.getElementById(`exploiter-output-${finding.index}`);
+                        const compBtnFresh = document.getElementById(`btn-compile-${finding.index}`);
+
+                        if (compBtnFresh) {
+                            compBtnFresh.disabled = false;
+                            compBtnFresh.textContent = data.status === 'success' ? '✅ Compile Success' : '❌ Compile Failed';
+                        }
+
+                        if (compOutCont && compLog) {
+                            compOutCont.style.display = 'block';
+                            compLog.textContent = data.compiler_output || data.error || 'No output';
+                        }
+
+                        // Update cache with compilation results
+                        aiCache[cacheKey].compile_status = data.status;
+                        aiCache[cacheKey].compiler_output = data.compiler_output || data.error;
+
+                        if (data.status === 'success' && data.exe_path) {
+                            aiCache[cacheKey].exe_path = data.exe_path;
+                            if (runBtn) runBtn.disabled = false;
+                        }
+
+                        // If Agent auto-fixed the code, update UI and cache
+                        if (data.fixed_poc_code && data.fixed_poc_code !== cachedResult.poc_code) {
+                            aiCache[cacheKey].poc_code = data.fixed_poc_code;
+                            if (expOut) {
+                                expOut.textContent = data.fixed_poc_code;
+                                hljs.highlightElement(expOut);
+                            }
+                        }
+                    } catch (err) {
+                        btnCompile.disabled = false;
+                        btnCompile.textContent = '❌ Network Error';
+                        alert(`Compilation request failed:\n${err.message}`);
+                    }
+                });
+            }
+
+            if (btnRun) {
+                btnRun.addEventListener('click', async () => {
+                    const cachedResult = aiCache[cacheKey];
+                    if (!cachedResult || !cachedResult.exe_path) return;
+
+                    if (!confirm("⚠️ WARNING: You are about to execute an AI-generated local privilege escalation exploit sequence on THIS HOST DEVICE!\n\nExecuting malformed IOCTLs can cause a Bugcheck (BSoD) and instantly crash your computer. Make sure you have saved all work.\n\nProceed with Execution?")) return;
+
+                    btnRun.disabled = true;
+                    btnRun.textContent = '⏳ Executing...';
+
+                    try {
+                        const res = await fetch('/api/run_poc', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ exe_path: cachedResult.exe_path })
+                        });
+                        const data = await res.json();
+
+                        const runBtnFresh = document.getElementById(`btn-run-${finding.index}`);
+                        const runOutCont = document.getElementById(`run-output-${finding.index}`);
+                        const runLog = document.getElementById(`run-log-${finding.index}`);
+
+                        if (runBtnFresh) {
+                            runBtnFresh.disabled = false;
+                            runBtnFresh.textContent = data.status === 'success' ? '✅ Run Complete' : '❌ Run Failed';
+                        }
+
+                        if (runOutCont && runLog) {
+                            runOutCont.style.display = 'block';
+                            runLog.textContent = data.output || data.error || 'No output';
+                        }
+
+                        aiCache[cacheKey].run_output = data.output || data.error;
+
+                    } catch (err) {
+                        btnRun.disabled = false;
+                        btnRun.textContent = '❌ Network Error';
+                        alert(`Execution request failed:\n${err.message}`);
+                    }
+                });
+            }
+
+            if (btnReport) {
+                btnReport.addEventListener('click', async () => {
+                    const cachedResult = aiCache[cacheKey];
+                    if (!cachedResult || !cachedResult.reverser_analysis || !cachedResult.poc_code) return;
+
+                    btnReport.disabled = true;
+                    btnReport.textContent = '⏳ Writing Report...';
+
+                    try {
+                        const res = await fetch('/api/report', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                driver_name: driver.driver.name,
+                                driver_path: driver.driver.path,
+                                finding_check: finding.check,
+                                ioctl_code: finding.ioctlCode,
+                                reverser_analysis: cachedResult.reverser_analysis,
+                                poc_code: cachedResult.poc_code,
+                                language: currentLang,
+                                ai_config: currentAiConfig
+                            })
+                        });
+                        const data = await res.json();
+
+                        const repBtnFresh = document.getElementById(`btn-report-${finding.index}`);
+                        const repOutCont = document.getElementById(`report-output-${finding.index}`);
+                        const repMd = document.getElementById(`report-md-${finding.index}`);
+
+                        if (repBtnFresh) {
+                            repBtnFresh.disabled = false;
+                            repBtnFresh.textContent = data.status === 'success' ? '✅ Generated' : '❌ Failed';
+                        }
+
+                        if (repOutCont && repMd && data.report_markdown) {
+                            repOutCont.style.display = 'block';
+                            repMd.innerHTML = marked.parse(data.report_markdown);
+                        } else if (repOutCont && repMd && data.error) {
+                            repOutCont.style.display = 'block';
+                            repMd.textContent = "Error generating report: " + data.error;
+                        }
+
+                        if (data.status === 'success') {
+                            aiCache[cacheKey].report_markdown = data.report_markdown;
+                        }
+
+                    } catch (err) {
+                        btnReport.disabled = false;
+                        btnReport.textContent = '❌ Network Error';
+                        alert(`Report generation failed:\n${err.message}`);
+                    }
+                });
             }
         });
 
