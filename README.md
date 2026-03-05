@@ -178,6 +178,24 @@ The Web UI provides:
 - Interactive modals showing full path, versions, findings, scores, and CNA bounty links
 - **🧠 Per-Finding AI Analysis & Batch 'Analyze All'**: Automatically triggers Ghidra to extract the target IOCTL handler and feeds it to the Reverser & Exploiter LLM agents to verify the bug and auto-generate exploiting C++ code!
 
+## System Architecture
+
+**Cthaeh** is designed as a hybrid pipeline bridging traditional static analysis with autonomous Web-UI-driven LLM Agents:
+
+1. **Static Triage Engine (Ghidra headless)** 
+   - `run_triage.py` orchestrates parallel processing of `.sys` files. 
+   - Uses `pefile` to pre-filter, then relies on `driver_triage.py` running inside Ghidra to map basic blocks, Pcode, and heuristic indicators.
+   - Outputs a ranked database: `triage_results.json`.
+2. **REST Backend (FastAPI)**
+   - `server.py` hosts the local Uvicorn web server and serves the `web_ui/` dashboard.
+   - Exposes APIs endpoints like `/api/analyze`, `/api/models`, and `/api/rescan` for real-time triage control.
+3. **Multi-Agent AI Dispatcher**
+   - `agents.py` dynamically interfaces with **Gemini**, **OpenAI**, and **DeepSeek** via their respective SDKs.
+   - **Reverser Agent**: Analyzes headless Ghidra decompiled C pseudocode to mathematically verify if a heuristic IOCTL finding is authentically exploitable (e.g. tracking `ProbeForRead` missing checks).
+   - **Exploiter Agent**: Subscribes to the Reverser's report to synthesize an end-to-end C++ Proof-of-Concept for `DeviceIoControl`.
+4. **Interactive Dashboard (Vanilla Frontend)**
+   - Pure HTML/CSS/JS architecture providing real-time UI state-tracking for AI processes, dynamic API key configuration, and live system re-scanning directly from the browser.
+
 ## Files
 
 | File | Purpose |
