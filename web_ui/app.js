@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
             exploiter_title: "💣 Exploiter PoC"
         },
         zh: {
-            app_title: "🌳 Cthaeh <span>驱动分诊台面板</span>",
+            app_title: "🌳 Cthaeh <span>驱动漏洞分析看板</span>",
             app_subtitle: "Windows 内核驱动漏洞自动化评估工具",
             stat_total: "驱动总数",
             stat_high: "高危风险",
