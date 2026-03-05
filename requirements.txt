@@ -1,2 +1,7 @@
 pefile
 pyyaml
+fastapi
+uvicorn
+pydantic
+google-genai
+openai
