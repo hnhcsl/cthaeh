@@ -62,6 +62,31 @@ async def get_models(provider: str = Query("gemini"), api_key: Optional[str] = N
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+class RescanResponse(BaseModel):
+    status: str
+    message: str = ""
+    error: str = ""
+
+@app.post("/api/rescan", response_model=RescanResponse)
+async def rescan_device():
+    """Trigger a new extraction and triage of system drivers."""
+    try:
+        # Run triage script synchronously for now so the UI can just await the fetch
+        # and reload the page when it's completely done.
+        process = await asyncio.create_subprocess_exec(
+            "python", "run_triage.py",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            return RescanResponse(status="error", error=f"Triage failed with code {process.returncode}:\n{stderr.decode('utf-8', errors='ignore')}")
+            
+        return RescanResponse(status="success", message="Device drivers rescan completed successfully.")
+    except Exception as e:
+        return RescanResponse(status="error", error=str(e))
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze_driver(req: AnalyzeRequest):
     # Retrieve AI configuration

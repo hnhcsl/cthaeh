@@ -75,7 +75,10 @@ document.addEventListener('DOMContentLoaded', () => {
             btn_failed: "❌ Failed",
             waking_agents: "Waking agents for ",
             reverser_title: "🕵️ Reverser Analysis",
-            exploiter_title: "💣 Exploiter PoC"
+            exploiter_title: "💣 Exploiter PoC",
+            rescan_btn_top: "🔄 Rescan Device",
+            rescan_overlay_title: "🕵️ Re-extracting and analyzing core drivers...",
+            rescan_overlay_desc: "This complete triage process usually takes 1 to 3 minutes depending on your device. Please do not close this window."
         },
         zh: {
             app_title: "🌳 Cthaeh <span>驱动漏洞分析看板</span>",
@@ -112,7 +115,10 @@ document.addEventListener('DOMContentLoaded', () => {
             btn_failed: "❌ 分析失败",
             waking_agents: "正在唤醒AI Agent处理 ",
             reverser_title: "🕵️ 逆向Agent分析",
-            exploiter_title: "💣 利用Agent生成PoC"
+            exploiter_title: "💣 利用Agent生成PoC",
+            rescan_btn_top: "🔄 重新扫描设备",
+            rescan_overlay_title: "🕵️ 正在重新提取并分析本机所有核心驱动...",
+            rescan_overlay_desc: "这个过程通常需要1~3分钟，取决于您的设备性能，请耐心等待，请勿关闭本窗口。"
         }
     };
 
@@ -246,6 +252,33 @@ document.addEventListener('DOMContentLoaded', () => {
             settingsModal.classList.remove('active');
             document.body.style.overflow = 'auto';
             alert(translations[currentLang]['settings_saved_alert'] || "AI Configuration Saved!");
+        });
+    }
+
+    // --- Rescan Device Logic ---
+    const rescanBtn = document.getElementById('rescan-btn');
+    const rescanOverlay = document.getElementById('rescan-overlay');
+
+    if (rescanBtn && rescanOverlay) {
+        rescanBtn.addEventListener('click', async () => {
+            // Show the un-closeable loading overlay
+            rescanOverlay.style.display = 'flex';
+
+            try {
+                const response = await fetch('/api/rescan', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    // Triage is completely done, refresh the database UI
+                    location.reload();
+                } else {
+                    alert(`Rescan failed:\n${result.error}`);
+                    rescanOverlay.style.display = 'none';
+                }
+            } catch (err) {
+                alert(`Network error during device rescan:\n${err.message}`);
+                rescanOverlay.style.display = 'none';
+            }
         });
     }
 

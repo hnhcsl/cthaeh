@@ -12,6 +12,16 @@
 </head>
 
 <body>
+    <!-- Global Rescan Overlay -->
+    <div id="rescan-overlay" class="modal"
+        style="z-index: 9999; background: rgba(0,0,0,0.85); flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+        <div class="ai-spinner" style="width: 60px; height: 60px; border-width: 4px; margin-bottom: 2rem;"></div>
+        <h2 style="color: #e2e8f0; margin-bottom: 1rem;" data-i18n="rescan_overlay_title">🕵️ Re-extracting and
+            analyzing core drivers...</h2>
+        <p style="color: #94a3b8; max-width: 500px;" data-i18n="rescan_overlay_desc">This complete triage process
+            usually takes 1 to 3 minutes depending on your device. Please do not close this window.</p>
+    </div>
+
     <div class="glass-bg"></div>
     <div class="container">
         <header>
@@ -23,6 +33,9 @@
                 </div>
                 <!-- Control Buttons -->
                 <div style="display: flex; gap: 0.5rem;">
+                    <button id="rescan-btn" class="ai-btn-small"
+                        style="font-size: 0.75rem; background: linear-gradient(135deg, #0f172a, #1e293b); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 0.3rem 0.6rem;"
+                        data-i18n="rescan_btn_top">🔄 Rescan Device</button>
                     <button id="lang-toggle-btn" class="ai-btn-small"
                         style="font-size: 0.75rem; background: linear-gradient(135deg, #475569, #334155); color: #e2e8f0; padding: 0.3rem 0.6rem;">🌐
                         切换至中文</button>
