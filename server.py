@@ -183,7 +183,16 @@ async def analyze_driver(req: AnalyzeRequest):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
-    stdout, stderr = await process.communicate()
+    try:
+        # Heavily obfuscated drivers (like anti-cheats) can cause Ghidra's auto-analysis to hang for hours.
+        # We enforce a 5-minute timeout.
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0)
+    except asyncio.TimeoutError:
+        try:
+            process.kill()
+        except Exception:
+            pass
+        return AnalyzeResponse(status="error", error="Ghidra extraction timed out after 5 minutes. The driver may be heavily obfuscated (e.g. anti-cheat) or too large.")
     
     if process.returncode != 0 and process.returncode != 128:  # 128 is thrown if script exits cleanly but project doesn't save
         print("Ghidra Error:\n", stderr.decode('utf-8', errors='ignore'))
