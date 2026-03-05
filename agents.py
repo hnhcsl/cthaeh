@@ -1,4 +1,5 @@
 import os
+import openai
 from google import genai
 from google.genai import types
 
@@ -56,21 +57,54 @@ If it's an arbitrary write, make it write `0x4141414141414141` to `0x42424242424
 Output ONLY the C++ code block. No markdown wrappers around the file, just the raw code.
 """
 
-def run_reverser_agent(api_key: str, model_name: str, decompiled_code: str, ioctl_code: str, language: str = "en") -> dict:
-    client = genai.Client(api_key=api_key)
+def call_llm(prompt: str, ai_conf: dict, api_key: str, temperature: float = 0.2) -> str:
+    provider = ai_conf.get("provider", "gemini")
+    model_name = ai_conf.get("model", "gemini-2.5-flash")
+    
+    if provider == "gemini":
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=temperature,
+            ),
+        )
+        return response.text
+        
+    elif provider == "deepseek":
+        client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a senior Windows kernel vulnerability researcher and exploit developer."},
+                {"role": "user", "content": prompt},
+            ],
+            stream=False,
+            temperature=temperature
+        )
+        return response.choices[0].message.content
+        
+    elif provider == "openai":
+        client = openai.OpenAI(api_key=api_key) # Defaults to api.openai.com
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a senior Windows kernel vulnerability researcher and exploit developer."},
+                {"role": "user", "content": prompt},
+            ],
+            stream=False,
+            temperature=temperature
+        )
+        return response.choices[0].message.content
+    else:
+        raise ValueError(f"Unknown AI Provider: {provider}")
+
+def run_reverser_agent(decompiled_code: str, ioctl_code: str, language: str, ai_conf: dict, api_key: str) -> dict:
     prompt = build_reverser_prompt(decompiled_code, ioctl_code, language)
+    analysis = call_llm(prompt, ai_conf, api_key, temperature=0.2)
     
-    response = client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.2,
-        ),
-    )
-    
-    analysis = response.text
     vuln_exists = "[VULN_EXISTS=TRUE]" in analysis
-    
     # Clean the marker from the user-facing text
     clean_analysis = analysis.replace("[VULN_EXISTS=TRUE]", "").replace("[VULN_EXISTS=FALSE]", "").strip()
     
@@ -79,19 +113,10 @@ def run_reverser_agent(api_key: str, model_name: str, decompiled_code: str, ioct
         "vuln_exists": vuln_exists
     }
 
-def run_exploiter_agent(api_key: str, model_name: str, decompiled_code: str, device_name: str, ioctl_code: str, reverser_analysis: str, language: str = "en") -> str:
-    client = genai.Client(api_key=api_key)
+def run_exploiter_agent(decompiled_code: str, device_name: str, ioctl_code: str, reverser_analysis: str, language: str, ai_conf: dict, api_key: str) -> str:
     prompt = build_exploiter_prompt(decompiled_code, device_name, ioctl_code, reverser_analysis, language)
+    poc_code = call_llm(prompt, ai_conf, api_key, temperature=0.1)
     
-    response = client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-        ),
-    )
-    
-    poc_code = response.text
     # Clean markdown if the LLM still wrapped it
     if poc_code.startswith("```cpp"):
         poc_code = poc_code[6:]

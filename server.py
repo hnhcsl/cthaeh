@@ -33,8 +33,8 @@ AVAILABLE_MODELS = {
 class AnalyzeRequest(BaseModel):
     driver_path: str
     ioctl_code: str = "Unknown" # Optional, if the user highlights a specific one
-    model_choice: str = "gemini"
     language: str = "en" # "en" or "zh"
+    ai_config: dict = {} # Phase 5: Pass the provider, model, and apiKey
 
 class AnalyzeResponse(BaseModel):
     status: str
@@ -45,8 +45,20 @@ class AnalyzeResponse(BaseModel):
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze_driver(req: AnalyzeRequest):
-    if not GEMINI_API_KEY:
-        return AnalyzeResponse(status="error", error="GEMINI_API_KEY environment variable is not set. Cannot run LLM.")
+    # Retrieve AI configuration
+    ai_conf = req.ai_config or {}
+    api_key = ai_conf.get("apiKey", "").strip()
+    provider = ai_conf.get("provider", "gemini")
+    
+    # Fallback to env var if UI didn't provide one
+    if not api_key:
+        if provider == "gemini":
+            api_key = GEMINI_API_KEY
+        else:
+            api_key = os.environ.get("OPENAI_API_KEY") 
+
+    if not api_key:
+        return AnalyzeResponse(status="error", error=f"Missing API Key for provider '{provider}'. Please configure it in settings.")
         
     driver_path = req.driver_path
     if driver_path.startswith("/") and len(driver_path) > 2 and driver_path[2] == ":":
@@ -55,8 +67,6 @@ async def analyze_driver(req: AnalyzeRequest):
 
     if not os.path.exists(driver_path):
         return AnalyzeResponse(status="error", error=f"Driver file not found: {req.driver_path} (Resolved: {driver_path})")
-
-    model_name = AVAILABLE_MODELS.get(req.model_choice, "gemini-2.5-flash")
     
     # Step 1: Extract Decompiled Code using Ghidra Headless
     print(f"[*] Starting extraction for {driver_path} (IOCTL: {req.ioctl_code})...")
@@ -110,7 +120,7 @@ async def analyze_driver(req: AnalyzeRequest):
     # Step 2: Agent 1 - Reverser
     print(f"[*] Triggering Reverser Agent on {len(decompiled_code)} bytes of decompiled code...")
     try:
-        rev_res = agents.run_reverser_agent(GEMINI_API_KEY, model_name, decompiled_code, req.ioctl_code, req.language)
+        rev_res = agents.run_reverser_agent(decompiled_code, req.ioctl_code, req.language, ai_conf, api_key)
     except Exception as e:
         return AnalyzeResponse(status="error", error=f"Reverser Agent failed: {str(e)}")
         
@@ -125,7 +135,7 @@ async def analyze_driver(req: AnalyzeRequest):
     # Step 3: Agent 2 - Exploiter
     print("[*] Vulnerability confirmed by Agent! Triggering Exploiter Agent for PoC generation...")
     try:
-        poc = agents.run_exploiter_agent(GEMINI_API_KEY, model_name, decompiled_code, device_name, req.ioctl_code, rev_res["analysis"], req.language)
+        poc = agents.run_exploiter_agent(decompiled_code, device_name, req.ioctl_code, rev_res["analysis"], req.language, ai_conf, api_key)
     except Exception as e:
          return AnalyzeResponse(status="success_partial", reverser_analysis=rev_res["analysis"], vuln_exists=True, poc_code=f"Exploiter Agent failed to generate PoC: {str(e)}")
 

@@ -6,9 +6,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalBody = document.getElementById('modal-body');
     const closeBtn = document.querySelector('.close-btn');
     const langToggleBtn = document.getElementById('lang-toggle-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const settingsCloseBtn = document.querySelector('.settings-close-btn');
+
+    // Settings elements
+    const aiProviderSelect = document.getElementById('ai-provider-select');
+    const aiModelSelect = document.getElementById('ai-model-select');
+    const aiApikeyInput = document.getElementById('ai-apikey-input');
+    const settingsSaveBtn = document.getElementById('settings-save-btn');
 
     let driversData = [];
     let aiCache = {}; // Phase 4: In-memory cache for AI results
+
+    // --- AI Configuration ---
+    const defaultAiConfig = { provider: 'gemini', model: 'gemini-2.5-flash', apiKey: '' };
+    let currentAiConfig = JSON.parse(localStorage.getItem('cthaeh_ai_config')) || defaultAiConfig;
+
+    const providerModels = {
+        gemini: [
+            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+            { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' }
+        ],
+        deepseek: [
+            { id: 'deepseek-chat', name: 'DeepSeek V3 (Chat)' },
+            { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoner)' }
+        ],
+        openai: [
+            { id: 'gpt-4o', name: 'GPT-4o' },
+            { id: 'gpt-4o-mini', name: 'GPT-4o Mini' }
+        ]
+    };
 
     // --- i18n Dictionary ---
     const translations = {
@@ -27,6 +55,13 @@ document.addEventListener('DOMContentLoaded', () => {
             filter_low: "Low Risk",
             loading_results: "Loading triage results...",
             lang_toggle: "🌐 切换至中文",
+            settings_btn: "⚙️ Settings",
+            settings_title: "⚙️ AI Configuration",
+            settings_provider: "AI Provider",
+            settings_model: "Model",
+            settings_apikey: "API Key",
+            settings_save: "💾 Save Configuration",
+            settings_saved_alert: "AI Configuration Saved!",
             modal_file_info: "File Information",
             modal_version_mani: "Version Manifest",
             modal_vuln_findings: "Vulnerability Findings",
@@ -57,6 +92,13 @@ document.addEventListener('DOMContentLoaded', () => {
             filter_low: "低风险",
             loading_results: "正在加载分诊结果...",
             lang_toggle: "🌐 Switch to English",
+            settings_btn: "⚙️ 设置",
+            settings_title: "⚙️ AI 模型配置",
+            settings_provider: "AI 供应商",
+            settings_model: "具体模型",
+            settings_apikey: "API 密钥 (Key)",
+            settings_save: "💾 保存配置",
+            settings_saved_alert: "AI 配置已成功保存！",
             modal_file_info: "文件信息",
             modal_version_mani: "版本清单",
             modal_vuln_findings: "漏洞特征发现",
@@ -64,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
             modal_verified_cna: "🛡️ 认证的 CNA 厂商：",
             modal_bounty_prog: "该厂商拥有漏洞悬赏披露计划。",
             modal_view_bounty: "查看漏洞悬赏计划 ↗",
-            btn_analyze: "🧠 深度分析",
+            btn_analyze: "🧠 AI分析",
             btn_analyzing: "⏳ 分析中...",
             btn_analyzed: "✅ 已分析",
             btn_failed: "❌ 分析失败",
@@ -110,6 +152,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize language on startup
     setLanguage(currentLang);
+
+    // --- Settings Modal Logic ---
+    function updateModelDropdown(provider, selectedModel) {
+        aiModelSelect.innerHTML = '';
+        const models = providerModels[provider] || [];
+        models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name;
+            if (m.id === selectedModel) {
+                opt.selected = true;
+            }
+            aiModelSelect.appendChild(opt);
+        });
+    }
+
+    aiProviderSelect.addEventListener('change', (e) => {
+        updateModelDropdown(e.target.value, null);
+    });
+
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+            // Load current config into modal
+            aiProviderSelect.value = currentAiConfig.provider;
+            updateModelDropdown(currentAiConfig.provider, currentAiConfig.model);
+            aiApikeyInput.value = currentAiConfig.apiKey;
+
+            settingsModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            setLanguage(currentLang); // Ensure translating dynamically generated items
+        });
+    }
+
+    if (settingsCloseBtn) {
+        settingsCloseBtn.addEventListener('click', () => {
+            settingsModal.classList.remove('active');
+            document.body.style.overflow = 'auto';
+        });
+    }
+
+    if (settingsSaveBtn) {
+        settingsSaveBtn.addEventListener('click', () => {
+            currentAiConfig = {
+                provider: aiProviderSelect.value,
+                model: aiModelSelect.value,
+                apiKey: aiApikeyInput.value.trim()
+            };
+            localStorage.setItem('cthaeh_ai_config', JSON.stringify(currentAiConfig));
+            settingsModal.classList.remove('active');
+            document.body.style.overflow = 'auto';
+            alert(translations[currentLang]['settings_saved_alert'] || "AI Configuration Saved!");
+        });
+    }
 
     // Fetch the JSON data
     fetch('/triage_results.json')
@@ -323,8 +418,12 @@ Description: ${cleanString(versionInfo.FileDescription)}
             container.style.display = 'block';
             loading.style.display = 'flex';
             results.style.display = 'none';
+
+            // UI Polish: Use finding check name if IOCTL is unknown
+            const displayName = finding.ioctlCode === 'Unknown' ? finding.check : finding.ioctlCode;
+
             // Translate the static part, keeping the dynamic IOCTL code
-            statusTxt.innerHTML = `<span data-i18n="waking_agents">${translations[currentLang]['waking_agents']}</span>${finding.ioctlCode}...`;
+            statusTxt.innerHTML = `<span data-i18n="waking_agents">${translations[currentLang]['waking_agents']}</span>${displayName}...`;
 
             const cacheKey = `${driver.driver.path}_${finding.ioctlCode}`;
 
@@ -339,7 +438,8 @@ Description: ${cleanString(versionInfo.FileDescription)}
                         body: JSON.stringify({
                             driver_path: driver.driver.path,
                             ioctl_code: finding.ioctlCode,
-                            language: currentLang
+                            language: currentLang,
+                            ai_config: currentAiConfig
                         })
                     });
                     result = await response.json();
