@@ -154,30 +154,69 @@ document.addEventListener('DOMContentLoaded', () => {
     setLanguage(currentLang);
 
     // --- Settings Modal Logic ---
-    function updateModelDropdown(provider, selectedModel) {
+    async function updateModelDropdown(provider, selectedModel, apiKey) {
+        aiModelSelect.innerHTML = '<option disabled>Loading models...</option>';
+        aiModelSelect.disabled = true;
+
+        // Try dynamic fetch first if an API key is somewhat present
+        let modelsToRender = null;
+        if (apiKey && apiKey.length > 5) {
+            try {
+                const url = new URL('/api/models', window.location.origin);
+                url.searchParams.append('provider', provider);
+                url.searchParams.append('api_key', apiKey);
+
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data.status === 'success' && data.models && data.models.length > 0) {
+                    modelsToRender = data.models;
+                }
+            } catch (err) {
+                console.warn("Dynamic API fetch failed, falling back to static config", err);
+            }
+        }
+
+        // Fallback to static list if fetch failed or key is missing
+        if (!modelsToRender) {
+            modelsToRender = providerModels[provider] || [];
+        }
+
         aiModelSelect.innerHTML = '';
-        const models = providerModels[provider] || [];
-        models.forEach(m => {
+        modelsToRender.forEach(m => {
             const opt = document.createElement('option');
-            opt.value = m.id;
-            opt.textContent = m.name;
-            if (m.id === selectedModel) {
+            // Support both our static {id, name} or dynamically fetched {id, name} 
+            const optId = typeof m === 'string' ? m : (m.id || m);
+            const optName = typeof m === 'string' ? m : (m.name || m.id || m);
+
+            opt.value = optId;
+            opt.textContent = optName;
+            if (optId === selectedModel) {
                 opt.selected = true;
             }
             aiModelSelect.appendChild(opt);
         });
+
+        aiModelSelect.disabled = false;
     }
 
     aiProviderSelect.addEventListener('change', (e) => {
-        updateModelDropdown(e.target.value, null);
+        updateModelDropdown(e.target.value, null, aiApikeyInput.value.trim());
+    });
+
+    // Auto-fetch if user types a new API key and clicks away
+    aiApikeyInput.addEventListener('blur', (e) => {
+        updateModelDropdown(aiProviderSelect.value, aiModelSelect.value, e.target.value.trim());
     });
 
     if (settingsBtn) {
         settingsBtn.addEventListener('click', () => {
             // Load current config into modal
             aiProviderSelect.value = currentAiConfig.provider;
-            updateModelDropdown(currentAiConfig.provider, currentAiConfig.model);
             aiApikeyInput.value = currentAiConfig.apiKey;
+
+            // Kickoff async load
+            updateModelDropdown(currentAiConfig.provider, currentAiConfig.model, currentAiConfig.apiKey);
 
             settingsModal.classList.add('active');
             document.body.style.overflow = 'hidden';
@@ -189,6 +228,10 @@ document.addEventListener('DOMContentLoaded', () => {
         settingsCloseBtn.addEventListener('click', () => {
             settingsModal.classList.remove('active');
             document.body.style.overflow = 'auto';
+
+            // Revert unsaved dropdown UI state to stored config
+            aiProviderSelect.value = currentAiConfig.provider;
+            aiApikeyInput.value = currentAiConfig.apiKey;
         });
     }
 

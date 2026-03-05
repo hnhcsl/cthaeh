@@ -3,6 +3,45 @@ import openai
 from google import genai
 from google.genai import types
 
+def fetch_available_models(provider: str, api_key: str) -> list:
+    """Fetch dynamically listing of models from the provider's API."""
+    models = []
+    
+    if provider == "gemini":
+        client = genai.Client(api_key=api_key)
+        # Using the new genai SDK methods
+        for m in client.models.list():
+            name = m.name.replace("models/", "")
+            # Filter to include only text/chat generation models, skip vision/embedding specific ones if possible
+            if "gemini" in name and "vision" not in name and "embedding" not in name:
+                models.append({"id": name, "name": name.replace("-", " ").title()})
+                
+    elif provider == "deepseek":
+        client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        for m in client.models.list().data:
+            models.append({"id": m.id, "name": m.id})
+            
+    elif provider == "openai":
+        client = openai.OpenAI(api_key=api_key)
+        for m in client.models.list().data:
+            # Filter for GPT models only to skip audio/whisper/dall-e
+            if "gpt" in m.id or "o1" in m.id or "o3" in m.id:
+                models.append({"id": m.id, "name": m.id})
+                
+    else:
+        raise ValueError(f"Unknown AI Provider: {provider}")
+        
+    # Deduplicate and sort
+    seen = set()
+    unique_models = []
+    for m in models:
+        if m["id"] not in seen:
+            seen.add(m["id"])
+            unique_models.append(m)
+            
+    # Sort alphabetically by ID descending to put newest up top usually
+    return sorted(unique_models, key=lambda x: x["id"], reverse=True)
+
 def build_reverser_prompt(decompiled_code: str, ioctl_code: str, language: str = "en") -> str:
     lang_instruction = ""
     if language == "zh":

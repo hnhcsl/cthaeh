@@ -3,10 +3,11 @@ import json
 import asyncio
 import subprocess
 import tempfile
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import Optional
 
 import agents
 
@@ -42,6 +43,24 @@ class AnalyzeResponse(BaseModel):
     vuln_exists: bool = False
     poc_code: str = ""
     error: str = ""
+
+@app.get("/api/models")
+async def get_models(provider: str = Query("gemini"), api_key: Optional[str] = None):
+    # Fallback to env var if UI didn't provide one
+    if not api_key:
+        if provider == "gemini":
+            api_key = GEMINI_API_KEY
+        else:
+            api_key = os.environ.get("OPENAI_API_KEY") 
+
+    if not api_key:
+        return {"status": "error", "error": f"Missing API Key for provider '{provider}'. Please configure it in settings."}
+
+    try:
+        models = agents.fetch_available_models(provider, api_key)
+        return {"status": "success", "models": models}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze_driver(req: AnalyzeRequest):
