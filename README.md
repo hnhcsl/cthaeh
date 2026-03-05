@@ -6,7 +6,7 @@ Ghidra-powered triage scanner for Windows kernel drivers. Scores drivers on 60+ 
 
 Named after the all-seeing tree from *The Kingkiller Chronicle*.
 
-Cthaeh doesn't find vulnerabilities. It finds the drivers most likely to *have* them.
+Cthaeh doesn't just find vulnerabilities. It finds the drivers most likely to *have* them, and now, it uses **Agentic LLMs** to reverse engineer and generate Proof-of-Concepts (PoCs) for them automatically.
 
 ## Quick Start
 
@@ -41,6 +41,7 @@ python run_triage.py --explain example.sys
 2. **Parallel Ghidra headless**: analyzes remaining drivers with N workers (auto = half your CPUs)
 3. **60+ heuristic checks**: scores each driver on vulnerability indicators
 4. **Ranked output**: CSV, JSON, and markdown report with full scoring breakdowns
+5. **AI Deep Analysis (New!)**: Triggers autonomous AI Agents (Reverser & Exploiter) via Gemini API to confirm vulnerabilities in decompiled IOCTL handlers and generate C++ PoCs via a local FastAPI backend.
 
 ## Scoring
 
@@ -160,18 +161,22 @@ python run_triage.py --explain example.sys
 
 The top scorer is auto-explained after every scan.
 
-### 🌐 Interactive Web UI Dashboard
-Cthaeh now features a built-in, Glassmorphism-styled local web dashboard to review your triage results visually.
+### 🌐 Interactive Web UI & AI Dashboard
+Cthaeh now features a built-in, Glassmorphism-styled local web dashboard to review your triage results visually, complete with **AI Deep Analysis** capabilities.
 
 ```bash
-# After running triage, start the local server in the project root:
-python -m http.server 8000
+# Set your API key for the AI Agents
+export GEMINI_API_KEY="your_api_key_here" # Or set via Windows Environment Variables
+
+# After running triage, start the FastAPI backend server:
+python -m uvicorn server:app --host 127.0.0.1 --port 8080
 ```
-Then open `http://localhost:8000/web_ui/index.html` in your browser. 
+Then open `http://127.0.0.1:8080/` in your browser. 
 The Web UI provides:
 - High-level categorization of analyzed drivers
 - Search filtering by vendor, driver name, or class
-- Interactive modals showing full path, versions, findings, scores, and CNA bounty links.
+- Interactive modals showing full path, versions, findings, scores, and CNA bounty links
+- **🧠 Per-Finding AI Analysis & Batch 'Analyze All'**: Automatically triggers Ghidra to extract the target IOCTL handler and feeds it to the Reverser & Exploiter LLM agents to verify the bug and auto-generate exploiting C++ code!
 
 ## Files
 
@@ -179,6 +184,9 @@ The Web UI provides:
 |------|---------|
 | `driver_triage.py` | Ghidra headless script (60+ checks, configurable weights) |
 | `run_triage.py` | Orchestrator (parallel, prefilter, explain, smart defaults) |
+| `server.py` | FastAPI backend for the Web UI and AI Agent orchestration |
+| `agents.py` | Reverser and Exploiter LLM agent logic via Gemini API |
+| `ghidra_scripts/extract_ioctl.py` | Headless script to decompile specific IOCTL handlers |
 | `prefilter.py` | Fast PE import pre-filter |
 | `extract_driverstore.py` | Extracts third-party .sys from Windows DriverStore |
 | `scoring_rules.yaml` | All scoring weights and thresholds in one place |
@@ -200,7 +208,8 @@ python run_triage.py C:\drivers --no-json --no-report  # CSV only
 ```
 
 **Environment variables:**
-- `GHIDRA_HOME` - Path to Ghidra installation (auto-detected if not set)
+- `GHIDRA_HOME` - Path to Ghidra installation (auto-detected if not set, **required** for AI Analysis)
+- `GEMINI_API_KEY` - Your Google Gemini API Key (**required** for AI Analysis `server.py`)
 - `CTHAEH_FP_PATH` - Override path to investigated.json
 - `CTHAEH_DTA_PATH` - Override path to .gdt data type archive
 
