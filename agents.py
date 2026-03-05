@@ -2,6 +2,7 @@ import os
 import openai
 import subprocess
 import logging
+import httpx
 from google import genai
 from google.genai import types
 
@@ -105,7 +106,7 @@ def call_llm(prompt: str, ai_conf: dict, api_key: str, temperature: float = 0.2)
     model_name = ai_conf.get("model", "gemini-2.5-flash")
     
     if provider == "gemini":
-        client = genai.Client(api_key=api_key, http_options={'timeout': 300.0})
+        client = genai.Client(api_key=api_key, http_options={'timeout': httpx.Timeout(300.0)})
         response = client.models.generate_content(
             model=model_name,
             contents=prompt,
