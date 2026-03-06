@@ -31,6 +31,187 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 
+# --- Scoring tier thresholds (used for report recommendations) ---
+SCORE_TIERS = {
+    "CRITICAL": 120,
+    "HIGH": 85,
+    "MEDIUM": 55,
+    "LOW": 30,
+}
+
+
+def get_score_tier(score):
+    """Return tier name based on score."""
+    if score >= SCORE_TIERS["CRITICAL"]:
+        return "CRITICAL"
+    elif score >= SCORE_TIERS["HIGH"]:
+        return "HIGH"
+    elif score >= SCORE_TIERS["MEDIUM"]:
+        return "MEDIUM"
+    elif score >= SCORE_TIERS["LOW"]:
+        return "LOW"
+    else:
+        return "SKIP"
+
+
+def get_tier_recommendation(tier, has_hardware=None, has_device_access=None):
+    """Return actionable next-step recommendation based on score tier."""
+    if tier == "CRITICAL":
+        return "IMMEDIATE - full reverse engineering, build PoC exploit"
+    elif tier == "HIGH":
+        if has_hardware is False:
+            return "needs hardware acquisition or remote target"
+        if has_device_access == "admin_only":
+            return "needs device node discovery or ACL bypass"
+        return "needs device node discovery"
+    elif tier == "MEDIUM":
+        return "worth a deeper look - check IOCTL surface manually"
+    elif tier == "LOW":
+        return "park for now, revisit if attack surface expands"
+    else:
+        return "skip unless new information surfaces"
+
+
+def load_enrichment_data():
+    """Load CNA vendor and CVE history data for report enrichment."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Load CNA vendors
+    cna_vendors = {}
+    cna_path = os.path.join(script_dir, "cna_vendors.json")
+    try:
+        with open(cna_path, "r") as f:
+            data = json.load(f)
+            cna_vendors = data.get("vendors", {})
+    except Exception:
+        pass
+    
+    # Load driver CVEs
+    driver_cves = {}
+    cves_path = os.path.join(script_dir, "driver_cves.json")
+    try:
+        with open(cves_path, "r") as f:
+            data = json.load(f)
+            driver_cves = data.get("driver_families", {})
+    except Exception:
+        pass
+    
+    return cna_vendors, driver_cves
+
+
+def match_vendor_from_enrichment(driver_name, cna_vendors):
+    """Match a driver name to CNA vendor data. Returns (vendor_key, vendor_data) or (None, None)."""
+    driver_lower = driver_name.lower().replace(".sys", "")
+    for vendor_key, vdata in cna_vendors.items():
+        for pattern in vdata.get("driver_patterns", []):
+            if driver_lower.startswith(pattern):
+                return vendor_key, vdata
+    return None, None
+
+
+def match_cve_family(driver_name, driver_cves):
+    """Match a driver name to CVE family data. Returns family data dict or None."""
+    driver_lower = driver_name.lower().replace(".sys", "")
+    for family_key, family_data in driver_cves.items():
+        for pattern in family_data.get("patterns", []):
+            if driver_lower.startswith(pattern):
+                return family_data
+    return None
+
+
+def get_running_drivers():
+    """Get list of currently loaded driver filenames on Windows.
+    
+    Uses 'driverquery /fo csv' to enumerate running drivers, then extracts
+    the module names. Returns a set of lowercase .sys filenames.
+    
+    Returns None if not on Windows or command fails.
+    """
+    if sys.platform != "win32":
+        print("WARNING: --running-only requires Windows. Skipping filter.")
+        return None
+    
+    try:
+        result = subprocess.run(
+            ["driverquery", "/fo", "csv", "/v"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            print(f"WARNING: driverquery failed: {result.stderr.strip()}")
+            return None
+        
+        running = set()
+        lines = result.stdout.strip().split("\n")
+        if len(lines) < 2:
+            return None
+        
+        # Parse CSV header to find the module name column
+        import csv as csv_mod
+        reader = csv_mod.reader(lines)
+        header = next(reader)
+        
+        # Find the "Module Name" column (or similar)
+        module_col = None
+        path_col = None
+        for idx, col in enumerate(header):
+            col_clean = col.strip().strip('"').lower()
+            if "module name" in col_clean:
+                module_col = idx
+            elif "path" in col_clean:
+                path_col = idx
+        
+        if module_col is None:
+            # Fallback: first column is usually module name
+            module_col = 0
+        
+        for row in reader:
+            if len(row) > module_col:
+                module_name = row[module_col].strip().strip('"').lower()
+                if module_name:
+                    # driverquery gives module names without .sys sometimes
+                    if not module_name.endswith(".sys"):
+                        module_name += ".sys"
+                    running.add(module_name)
+        
+        return running
+        
+    except FileNotFoundError:
+        print("WARNING: driverquery not found. Not on Windows?")
+        return None
+    except subprocess.TimeoutExpired:
+        print("WARNING: driverquery timed out.")
+        return None
+    except Exception as e:
+        print(f"WARNING: Failed to get running drivers: {e}")
+        return None
+
+
+def filter_running_drivers(sys_files, running_drivers):
+    """Filter sys_files list to only include currently running drivers.
+    
+    Args:
+        sys_files: list of full paths to .sys files
+        running_drivers: set of lowercase .sys filenames from get_running_drivers()
+    
+    Returns:
+        filtered list of paths
+    """
+    if running_drivers is None:
+        return sys_files
+    
+    kept = []
+    filtered_out = 0
+    for path in sys_files:
+        basename = os.path.basename(path).lower()
+        if basename in running_drivers:
+            kept.append(path)
+        else:
+            filtered_out += 1
+    
+    print(f"  Running-only filter: {len(kept)} loaded / {filtered_out} not loaded (filtered out)")
+    return kept
+
+
 def find_sys_files(directory):
     """Recursively find all .sys files in a directory."""
     sys_files = []
@@ -255,6 +436,8 @@ def write_report(results, output_path, top_n=20):
     """Generate a markdown triage report for top candidates."""
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
     
+    cna_vendors, driver_cves = load_enrichment_data()
+    
     total = len(results)
     critical = sum(1 for r in results if r.get("priority") == "CRITICAL")
     high = sum(1 for r in results if r.get("priority") == "HIGH")
@@ -296,7 +479,13 @@ def write_report(results, output_path, top_n=20):
         version_summary = driver.get("version_summary", "")
         skip_reason = r.get("skip_reason", "")
         
-        lines.append(f"### {i}. {emoji} {name} (Score: {score}, {priority})")
+        # Build enhanced driver header with version
+        header_name = name
+        if version_summary:
+            # Try to extract just the version number from version_summary
+            header_name = f"{name}"
+        
+        lines.append(f"### {i}. {emoji} {header_name} (Score: {score}, {priority})")
         lines.append("")
         
         if skip_reason:
@@ -306,30 +495,59 @@ def write_report(results, output_path, top_n=20):
         
         if version_summary:
             lines.append(f"**Vendor/Product:** {version_summary}")
+        
+        # Enhanced vendor + CNA info from enrichment data
+        vendor_key, vendor_data = match_vendor_from_enrichment(name, cna_vendors)
         vi = r.get("vendor_info", {})
-        if vi:
-            cna_str = "✅ CNA" if vi.get("is_cna") else "❌ Not CNA"
-            bounty_str = f" | 💰 Bounty: [{vi['bounty_url']}]({vi['bounty_url']})" if vi.get("bounty_url") else ""
-            lines.append(f"**CNA Status:** {cna_str} ({vi.get('vendor_name', '?')}){bounty_str}")
+        if vendor_data:
+            vendor_display = vendor_data.get("names", [vendor_key])[0] if vendor_data.get("names") else vendor_key.title()
+            cna_str = "CNA: YES" if vendor_data.get("is_cna") else "CNA: NO"
+            bounty_str = " | Bounty: PRESENT" if vendor_data.get("bounty_url") else ""
+            bounty_link = f" ([link]({vendor_data['bounty_url']}))" if vendor_data.get("bounty_url") else ""
+            lines.append(f"**Vendor:** {vendor_display} ({cna_str}){bounty_str}{bounty_link}")
+        elif vi:
+            cna_str = "CNA: YES" if vi.get("is_cna") else "CNA: NO"
+            bounty_str = f" | Bounty: PRESENT ([link]({vi['bounty_url']}))" if vi.get("bounty_url") else ""
+            lines.append(f"**Vendor:** {vi.get('vendor_name', '?')} ({cna_str}){bounty_str}")
+        
+        # Prior CVE history from enrichment data
+        cve_family = match_cve_family(name, driver_cves)
+        if cve_family:
+            cves = cve_family.get("cves", [])
+            cve_count = len(cves)
+            cve_examples = ", ".join(c["id"] for c in cves[:3])
+            if cve_count > 3:
+                cve_examples += f", +{cve_count - 3} more"
+            lines.append(f"**Prior CVEs:** {cve_count} ({cve_examples})")
+        
+        # Driver class
         dc = r.get("driver_class", {})
         if dc and dc.get("class", "UNKNOWN") != "UNKNOWN":
             lines.append(f"**Driver Class:** {dc['class']} ({dc.get('category', '')})")
+        
         lines.append(f"**Size:** {driver.get('size', 0):,} bytes | **Functions:** {driver.get('function_count', 0)}")
+        
         # Hardware presence info (Issue #3)
         hw = r.get("hardware_check", {})
+        hw_present = None
         if hw:
             hw_status = hw.get("status", "")
             if hw_status == "HARDWARE_PRESENT":
                 matched = hw.get("matched_device", "unknown device")
-                lines.append(f"**Hardware:** Present ({matched})")
+                lines.append(f"**Hardware:** ✅ Present ({matched})")
+                hw_present = True
             elif hw_status == "HARDWARE_ABSENT":
-                lines.append(f"**Hardware:** Absent (no matching PnP device)")
+                lines.append(f"**Hardware:** ❌ Absent (no matching PnP device)")
+                hw_present = False
             elif hw_status == "UNKNOWN":
-                lines.append(f"**Hardware:** Unknown ({hw.get('reason', '')})")
+                lines.append(f"**Hardware:** ❓ Unknown ({hw.get('reason', '')})")
+        
         # Device access info (Issue #4)
         dc_check = r.get("device_check", {})
+        device_access = None
         if dc_check:
             access = dc_check.get("access_level", "")
+            device_access = access
             ACCESS_ICONS = {
                 "everyone": "!! EVERYONE",
                 "users": "! Users",
@@ -338,6 +556,11 @@ def write_report(results, output_path, top_n=20):
             }
             access_str = ACCESS_ICONS.get(access, access)
             lines.append(f"**Device Access:** {access_str} ({dc_check.get('detail', '')})")
+        
+        # Actionable recommendation based on score tier
+        tier = get_score_tier(score)
+        recommendation = get_tier_recommendation(tier, hw_present, device_access)
+        lines.append(f"**Priority:** {tier} - {recommendation}")
         lines.append("")
 
         # Group findings by score (high to low), skip zero-score
@@ -361,6 +584,8 @@ def explain_driver(results, driver_name):
     """Show detailed scoring breakdown for a specific driver."""
     driver_name_lower = driver_name.lower()
     
+    cna_vendors, driver_cves = load_enrichment_data()
+    
     match = None
     for r in results:
         d = r.get("driver", {})
@@ -378,31 +603,66 @@ def explain_driver(results, driver_name):
         return
     
     d = match.get("driver", {})
-    print(f"\n{'='*60}")
-    print(f"  EXPLAIN: {d.get('name', '?')}")
-    print(f"{'='*60}")
-    print(f"  Score: {match.get('score', 0)} | Priority: {match.get('priority', '?')}")
-    print(f"  Size: {d.get('size', 0):,} bytes | Functions: {d.get('function_count', 0)}")
+    name = d.get("name", "?")
+    score = match.get("score", 0)
+    version_str = ""
     if d.get("version_summary"):
-        print(f"  Vendor: {d['version_summary']}")
+        version_str = f" {d['version_summary']}"
+    
+    print(f"\n{'='*60}")
+    print(f"  Driver: {name}{version_str}")
+    print(f"{'='*60}")
+    
+    # Vendor + CNA status from enrichment
+    vendor_key, vendor_data = match_vendor_from_enrichment(name, cna_vendors)
     vi = match.get("vendor_info", {})
-    if vi:
-        cna_str = "✅ CNA" if vi.get("is_cna") else "❌ Not CNA"
-        bounty_str = f" | 💰 Bounty: {vi['bounty_url']}" if vi.get("bounty_url") else ""
-        print(f"  CNA Status: {cna_str} ({vi.get('vendor_name', '?')}){bounty_str}")
+    if vendor_data:
+        vendor_display = vendor_data.get("names", [vendor_key])[0] if vendor_data.get("names") else vendor_key.title()
+        cna_str = "CNA: YES" if vendor_data.get("is_cna") else "CNA: NO"
+        bounty_str = " | Bounty: PRESENT" if vendor_data.get("bounty_url") else ""
+        print(f"  Vendor: {vendor_display} ({cna_str}){bounty_str}")
+    elif vi:
+        cna_str = "CNA: YES" if vi.get("is_cna") else "CNA: NO"
+        bounty_str = f" | Bounty: {vi['bounty_url']}" if vi.get("bounty_url") else ""
+        print(f"  Vendor: {vi.get('vendor_name', '?')} ({cna_str}){bounty_str}")
+    
+    # Prior CVEs from enrichment
+    cve_family = match_cve_family(name, driver_cves)
+    if cve_family:
+        cves = cve_family.get("cves", [])
+        cve_examples = ", ".join(c["id"] for c in cves[:3])
+        if len(cves) > 3:
+            cve_examples += f", +{len(cves) - 3} more"
+        print(f"  Prior CVEs: {len(cves)} ({cve_examples})")
+    
+    print(f"  Score: {score} | Priority: {match.get('priority', '?')}")
+    print(f"  Size: {d.get('size', 0):,} bytes | Functions: {d.get('function_count', 0)}")
+    
     dc = match.get("driver_class", {})
     if dc and dc.get("class", "UNKNOWN") != "UNKNOWN":
         print(f"  Driver Class: {dc['class']} ({dc.get('category', '')})")
+    
     hw = match.get("hardware_check", {})
+    hw_present = None
     if hw:
         hw_status = hw.get("status", "")
         if hw_status == "HARDWARE_PRESENT":
             print(f"  Hardware: PRESENT ({hw.get('matched_device', '?')})")
+            hw_present = True
         elif hw_status == "HARDWARE_ABSENT":
             print(f"  Hardware: ABSENT (no matching PnP device)")
+            hw_present = False
+    
     dc_check = match.get("device_check", {})
+    device_access = None
     if dc_check:
-        print(f"  Device Access: {dc_check.get('access_level', '?')} ({dc_check.get('detail', '')})")
+        device_access = dc_check.get("access_level", "")
+        print(f"  Device Access: {device_access} ({dc_check.get('detail', '')})")
+    
+    # Actionable recommendation
+    tier = get_score_tier(score)
+    recommendation = get_tier_recommendation(tier, hw_present, device_access)
+    print(f"  Priority: {tier} - {recommendation}")
     print()
     
     findings = match.get("findings", [])
@@ -520,6 +780,10 @@ def main():
                         help="Min score for device check (default: 75)")
     parser.add_argument("--research", action="store_true",
                         help="Research mode: hardware_absent is informational only")
+    parser.add_argument("--running-only", action="store_true", default=True,
+                        help="Only scan currently loaded drivers (default: True, Windows only)")
+    parser.add_argument("--all", action="store_true",
+                        help="Scan all drivers, not just running ones (overrides --running-only)")
 
     args = parser.parse_args()
     
@@ -599,6 +863,15 @@ def main():
     if not drivers:
         print("No .sys files found!")
         sys.exit(1)
+    
+    # Running-only filter (default ON, --all to override)
+    if args.running_only and not args.all and not args.single:
+        running = get_running_drivers()
+        if running is not None:
+            drivers = filter_running_drivers(drivers, running)
+            if not drivers:
+                print("No running drivers matched! Use --all to scan everything.")
+                sys.exit(1)
     
     if args.max > 0:
         drivers = drivers[:args.max]
