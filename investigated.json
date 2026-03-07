@@ -1,13 +1,40 @@
 {
   "investigated": {
-    "nvpcf.sys": "FP - MSR read not user-reachable, WDF device interface blocks unprivileged access",
-    "AMDRyzenMasterDriver.sys": "Skipped - cannot obtain latest version for analysis",
-    "AsusSAIO.sys": "1 vuln accepted by ASUS PSIRT, 3 rejected (Feb 2026)",
-    "AsusWmiAcpi.sys": "1 vuln accepted by ASUS PSIRT, 3 rejected (Feb 2026)",
-    "ssudbus2.sys": "4 vulns submitted to Samsung PSIRT (Feb 2026)",
-    "mtkbtfilterx.sys": "Submitted to MediaTek PSIRT MSV-7296 (Feb 2026), under review",
-    "mtkwl6ex.sys": "Submitted to MediaTek PSIRT MSV-6338 (Jan 2026), acknowledged",
-    "amd_dpfc.sys": "Investigated - nothing exploitable found (Feb 2026)",
-    "amdfendr.sys": "FP - AMD Fenced Runner, legitimate hardware management driver"
+    "nvpcf.sys": {
+      "reason": "FP - MSR read not user-reachable, WDF device interface blocks unprivileged access",
+      "version": null
+    },
+    "AMDRyzenMasterDriver.sys": {
+      "reason": "Skipped - cannot obtain latest version for analysis",
+      "version": null
+    },
+    "AsusSAIO.sys": {
+      "reason": "1 vuln accepted by ASUS PSIRT, 3 rejected (Feb 2026)",
+      "version": null
+    },
+    "AsusWmiAcpi.sys": {
+      "reason": "1 vuln accepted by ASUS PSIRT, 3 rejected (Feb 2026)",
+      "version": null
+    },
+    "ssudbus2.sys": {
+      "reason": "4 vulns submitted to Samsung PSIRT (Feb 2026)",
+      "version": "2.21.0.0"
+    },
+    "mtkbtfilterx.sys": {
+      "reason": "Submitted to MediaTek PSIRT MSV-7296 (Feb 2026), under review",
+      "version": null
+    },
+    "mtkwl6ex.sys": {
+      "reason": "Submitted to MediaTek PSIRT MSV-6338 (Jan 2026), acknowledged",
+      "version": null
+    },
+    "amd_dpfc.sys": {
+      "reason": "Investigated - nothing exploitable found (Feb 2026)",
+      "version": null
+    },
+    "amdfendr.sys": {
+      "reason": "FP - AMD Fenced Runner, legitimate hardware management driver",
+      "version": null
+    }
   }
 }

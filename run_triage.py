@@ -30,14 +30,43 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
-# --- Scoring tier thresholds (used for report recommendations) ---
-SCORE_TIERS = {
-    "CRITICAL": 120,
-    "HIGH": 85,
-    "MEDIUM": 55,
-    "LOW": 30,
-}
+
+def _load_thresholds():
+    """Load scoring thresholds from scoring_rules.yaml (single source of truth).
+    Falls back to hardcoded defaults if YAML unavailable."""
+    defaults = {"CRITICAL": 250, "HIGH": 150, "MEDIUM": 75, "LOW": 30}
+    if yaml is None:
+        return defaults
+    # Search: same dir as this script, then cwd
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "scoring_rules.yaml"),
+        os.path.join(os.getcwd(), "scoring_rules.yaml"),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    data = yaml.safe_load(f)
+                thresholds = data.get("thresholds", {})
+                if thresholds:
+                    return {
+                        "CRITICAL": thresholds.get("CRITICAL", defaults["CRITICAL"]),
+                        "HIGH": thresholds.get("HIGH", defaults["HIGH"]),
+                        "MEDIUM": thresholds.get("MEDIUM", defaults["MEDIUM"]),
+                        "LOW": thresholds.get("LOW", defaults["LOW"]),
+                    }
+            except Exception:
+                pass
+    return defaults
+
+
+# --- Scoring tier thresholds (loaded from scoring_rules.yaml) ---
+SCORE_TIERS = _load_thresholds()
 
 
 def get_score_tier(score):

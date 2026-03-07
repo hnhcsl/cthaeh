@@ -3202,7 +3202,24 @@ def run():
     driver_name = driver_info.get("name", "")
     
     # Check known FP / already-investigated list
-    skip_reason = INVESTIGATED.get(driver_name)
+    # Supports both old format ("driver.sys": "reason string")
+    # and new format ("driver.sys": {"reason": "...", "version": "1.2.3"})
+    skip_entry = INVESTIGATED.get(driver_name)
+    skip_reason = None
+    if skip_entry:
+        if isinstance(skip_entry, str):
+            # Old format: always skip
+            skip_reason = skip_entry
+        elif isinstance(skip_entry, dict):
+            entry_version = skip_entry.get("version")
+            driver_version = driver_info.get("version", "")
+            if entry_version and driver_version and entry_version != driver_version:
+                # Version mismatch: driver was updated, re-scan it
+                skip_reason = None
+                print("investigated.json: %s version changed (%s -> %s), re-scanning" % (
+                    driver_name, entry_version, driver_version))
+            else:
+                skip_reason = skip_entry.get("reason", "investigated")
     if skip_reason:
         result = {
             "driver": driver_info,

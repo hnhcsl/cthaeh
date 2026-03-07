@@ -1,10 +1,53 @@
 # 🌳 Cthaeh
 
-*"It sees all the ways the future can branch and blossom from a single moment."*
-
 Ghidra-powered triage scanner for Windows kernel drivers. Scores drivers on 97 vulnerability heuristics so you know which `.sys` files to pull apart first.
 
-Cthaeh doesn't find vulnerabilities. It finds the drivers most likely to *have* them.
+## Track Record
+
+Cthaeh has been used to identify and prioritize targets that led to **8 confirmed vulnerabilities** across three vendors:
+
+- **Samsung** (ssudbus2.sys) — 4 vulnerabilities submitted to Samsung PSIRT
+- **ASUS** (AsusWmiAcpi.sys, AsusPTPFilter.sys) — 3 vulnerabilities submitted, 1 accepted with patch
+- **MediaTek** (mtkwl6ex.sys) — Accepted, under review
+
+The tool doesn't find vulnerabilities directly. It finds the drivers most likely to *have* them, so you can focus your reverse engineering time where it matters.
+
+## Sample Output
+
+```
+============================================================
+  🌳 CTHAEH TRIAGE COMPLETE: 340 drivers analyzed
+============================================================
+  💀 CRITICAL:        2
+  🔴 HIGH priority:   14
+  🟡 MEDIUM priority: 38
+  🟢 LOW priority:    72
+  ⚪ SKIP:            214
+
+Top targets (>= HIGH):
+
+   1. [CRITICAL] 360 pts  athw8x.sys
+   2. [CRITICAL] 310 pts  vhdmp.sys
+   3. [HIGH    ] 245 pts  vmci.sys
+   4. [HIGH    ] 240 pts  hvservice.sys
+```
+
+### Explain Mode
+
+```
+============================================================
+  Driver: ssudbus2.sys v2.21.0.0 (Samsung Electronics)
+============================================================
+  Vendor: Samsung (CNA: YES) | Bounty: PRESENT
+  Score: 285 | Priority: CRITICAL
+  Priority: CRITICAL - IMMEDIATE - full reverse engineering, build PoC exploit
+
+  Scored checks:
+    + 25  [msr_write] Contains WRMSR instruction(s)
+    + 20  [symlink_no_acl] Symbolic link + IoCreateDevice without Secure
+    + 20  [port_io_rw] Port I/O: 12 IN + 8 OUT instructions
+    ...
+```
 
 ## Quick Start
 
@@ -39,38 +82,17 @@ Set `GHIDRA_HOME` and you never need `--ghidra`. Pre-filter, parallel workers, J
 | 🟢 LOW | ≥30 | Probably boring |
 | ⚪ SKIP | <30 | Move on |
 
-## Explain Mode
-
-```bash
-python run_triage.py --explain example.sys
-```
-
-```
-============================================================
-  Driver: example.sys v1.0.2.5 (Example Corp.)
-============================================================
-  Vendor: Example Corp. (CNA: YES) | Bounty: PRESENT
-  Prior CVEs: 3 (CVE-2024-1234, CVE-2023-5678, CVE-2022-9012)
-  Score: 285 | Priority: CRITICAL
-  Hardware: PRESENT (Intel Wi-Fi 6 AX201)
-  Priority: CRITICAL - IMMEDIATE - full reverse engineering, build PoC exploit
-
-  Scored checks:
-    + 25  [msr_write] Contains WRMSR instruction(s)
-    + 20  [symlink_no_acl] Symbolic link + IoCreateDevice without Secure
-    + 20  [port_io_rw] Port I/O: 12 IN + 8 OUT instructions
-    ...
-    Positive: +285 | Negative: 0 | Net: 285
-```
-
 ## Investigated Drivers
 
-Already-analyzed drivers go in `investigated.json` and are skipped on future scans:
+Already-analyzed drivers go in `investigated.json` and are skipped on future scans. Supports version-aware skipping: if a driver is updated (version changes), it gets re-scanned automatically.
 
 ```json
 {
   "investigated": {
-    "example.sys": "4 vulns submitted to vendor PSIRT"
+    "example.sys": {
+      "reason": "4 vulns submitted to vendor PSIRT",
+      "version": "2.21.0.0"
+    }
   }
 }
 ```
@@ -85,9 +107,11 @@ DriverStore --> extract --> running-only --> pre-filter --> Cthaeh --> ranked li
 
 ## Requirements
 
-- Python 3.8+ with `pefile`
+- Python 3.8+ with `pefile`, `pyyaml`
 - Ghidra 10.x+ (headless mode)
 - Windows for DriverStore extraction (analysis works on any OS)
+
+See [REFERENCE.md](REFERENCE.md) for the full technical reference (all 97 heuristics, CLI flags, anti-pattern tags).
 
 ## Acknowledgments
 
@@ -96,7 +120,6 @@ DriverStore --> extract --> running-only --> pre-filter --> Cthaeh --> ranked li
 - Anti-pattern tagging (AP1-AP6) based on [KernelSight](https://splintersfury.github.io/KernelSight/guides/secure-driver-anatomy/) vulnerability root cause analysis across 134 CVEs.
 - Framework detection and YAML scoring inspired by [DriverAtlas](https://github.com/splintersfury/DriverAtlas) by splintersfury.
 - Ghidra Data Type Archive for Windows drivers by [Talos Intelligence](https://blog.talosintelligence.com/ghidra-data-type-archive-for-windows-drivers/).
-- Windows driver data type archive from [Cisco Talos](https://github.com/Cisco-Talos/Windows-drivers-GDT-file). Blog post: [Ghidra data type archive for Windows drivers](https://blog.talosintelligence.com/ghidra-data-type-archive-for-windows-drivers/).
 
 ## License
 

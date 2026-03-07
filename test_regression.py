@@ -7,6 +7,16 @@ Tests scoring against known ground-truth samples:
 - 5 known false positives (should score lower or be skipped)
 
 Run: python test_regression.py [--json triage_results.json]
+
+## Canary Test Concept (TODO)
+When we have a collection of known-vulnerable driver binaries (.sys files),
+we should inject them into every scan as calibration checks:
+1. Maintain a canary/ directory with 5-10 drivers that have confirmed CVEs
+2. Before each scan, copy canaries into the scan directory
+3. After scoring, verify all canaries score CRITICAL or HIGH
+4. If any canary drifts below expected tier, scoring weights have regressed
+This catches silent regressions from weight tuning or threshold changes.
+Requires: actual .sys binaries we have rights to redistribute (or download scripts).
 """
 
 import json
