@@ -2,15 +2,7 @@
 
 Ghidra-powered triage scanner for Windows kernel drivers. Scores drivers on 97 vulnerability heuristics so you know which `.sys` files to pull apart first.
 
-## Track Record
-
-Cthaeh has been used to identify and prioritize targets that led to **8 confirmed vulnerabilities** across three vendors:
-
-- **Samsung** (ssudbus2.sys) — 4 vulnerabilities submitted to Samsung PSIRT
-- **ASUS** (AsusWmiAcpi.sys, AsusPTPFilter.sys) — 3 vulnerabilities submitted, 1 accepted with patch
-- **MediaTek** (mtkwl6ex.sys) — Accepted, under review
-
-The tool doesn't find vulnerabilities directly. It finds the drivers most likely to *have* them, so you can focus your reverse engineering time where it matters.
+Cthaeh doesn't find vulnerabilities. It finds the drivers most likely to *have* them, so you can focus your reverse engineering time where it matters.
 
 ## Sample Output
 
