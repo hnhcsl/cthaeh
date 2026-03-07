@@ -372,13 +372,10 @@ def print_summary(results, min_tier="HIGH"):
     if filtered:
         tier_label = f" (>= {min_tier})" if min_tier != "SKIP" else ""
         print(f"Top targets{tier_label}:")
-        print(f"  Score = heuristic analysis findings | Class = driver type risk")
         print()
         for i, r in enumerate(filtered[:20], 1):
             driver = r.get("driver", {})
-            dc = r.get("driver_class", {})
-            cls_tag = f" (class: {dc['class']})" if dc and dc.get("class", "UNKNOWN") != "UNKNOWN" else ""
-            print(f"  {i:2d}. [{r.get('priority', '?'):8s}] {r.get('score', 0):3d} pts  {driver.get('name', '?')}{cls_tag}")
+            print(f"  {i:2d}. [{r.get('priority', '?'):8s}] {r.get('score', 0):3d} pts  {driver.get('name', '?')}")
     elif results:
         print(f"No drivers at {min_tier} tier or above. Use --min-tier MEDIUM to see more.")
 
